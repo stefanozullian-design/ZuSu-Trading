@@ -18,8 +18,13 @@ dashboard and audit logging. No live trading.
 Market-data provider adapter, market-data quality layer, market-calendar engine,
 indicator engine, watchlists, scanner, charts.
 
-**External dependency:** a market-data provider must be chosen and its rate limits,
-session semantics, historical depth and corporate-action feed confirmed.
+**Provider: Alpaca** (chosen 2026-09-11). It carries market data and a broker API
+together, and its paper environment maps onto the PAPER environment already in the
+schema — so Phase 5's paper broker becomes a real venue rather than one we
+simulate. **Needs from the operator:** an Alpaca key id and secret in the
+environment. The free tier is IEX-only, which is thin but sufficient to build and
+validate the whole layer against; upgrading the feed later does not change the
+adapter.
 
 Exit criteria: quotes and candles flow from a real provider; stale, gapped,
 duplicated and impossible data is detected and blocks new trades; the calendar
@@ -80,11 +85,19 @@ tickers.
 Live broker adapter, authentication, order management with idempotency, executions
 and partial fills, positions, reconciliation, error handling.
 
-**External dependency:** the broker's API capabilities must be confirmed first —
-client order IDs (for idempotency), execution-level fills (for partial fills and
-reconciliation), and defined-risk multi-leg option orders. Nothing should be
-assumed about the venue, and the trading engine must not acquire any
-broker-specific assumptions.
+**Capabilities confirmed** for Robinhood on 2026-09-11 — see the survey in
+BUILD_STATUS.md. `ref_id` gives us idempotency, `executions[]` gives us
+execution-level fills, and specified-lot selling gives us tax lots. Two
+constraints carry into the design: only one account is reachable for trading, and
+orders placed by hand in the broker's own app arrive with a null `ref_id`, so
+reconciliation must match on the broker's order id and must expect to find orders
+this system did not place.
+
+Multi-leg defined-risk options are supported by the API but need an
+`option_level_3` account, which is not enabled today.
+
+The trading engine must still acquire no broker-specific assumptions: everything
+above belongs behind `BrokerAdapter`.
 
 Exit criteria: a crash immediately after submission never produces a duplicate
 order; internal records and broker records are reconciled, and a mismatch halts

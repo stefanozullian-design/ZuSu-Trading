@@ -4,7 +4,7 @@
 **Live trading: not possible.** No route in this API can create an order, and
 `ALLOW_LIVE_TRADING` defaults to false.
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ---
 
@@ -46,12 +46,43 @@ Nothing. Phase 1 is complete and Phase 2 has not started.
 
 ## Blocked
 
-| Item                            | Blocked on                                                                                                                                                                                                                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Real market data (Phase 2)      | Choice of provider. The provider adapter, quality layer and calendar cannot be finished until a provider's rate limits, session semantics and corporate-action feed are confirmed.                                                                                                   |
-| Live broker adapter (Phase 8)   | Confirmation of the broker's API capabilities — specifically whether it exposes client order IDs (needed for idempotency), execution-level fills (needed for partial fills and reconciliation), and defined-risk multi-leg option orders. Nothing about the venue should be assumed. |
-| Options trading (Phase 8+)      | The same broker confirmation, plus greeks and open-interest availability.                                                                                                                                                                                                            |
-| Notification delivery (Phase 6) | Choice of email/SMS/push providers.                                                                                                                                                                                                                                                  |
+| Item                            | Blocked on                                                                                                                                                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real market data (Phase 2)      | Alpaca API credentials. The provider is chosen; the adapter needs a key id and secret in the environment before it can be exercised against live data. Nothing blocks building the interface, quality layer and calendar meanwhile. |
+| Options engine (Phase 8+)       | Options are not enabled on either Robinhood account (`option_level` is empty). Level 2 unlocks covered calls, cash-secured puts and long calls/puts; the defined-risk vertical spreads §18 calls for need Level 3.                  |
+| Notification delivery (Phase 6) | Choice of email/SMS/push providers.                                                                                                                                                                                                 |
+
+The Phase 8 broker questions are no longer blocked — see the capability survey
+below.
+
+### Broker capability survey — Robinhood, 2026-09-11
+
+Established by reading the API's own contracts and the field structure of 83
+historical orders. No orders were placed and no trade details were copied here.
+
+| Requirement                           | Status | Detail                                                                                                                                                                                                                  |
+| ------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client order id for idempotency (§25) | ✅     | `ref_id` (UUID) is accepted on placement and deduplicated upstream. Maps 1:1 onto `Order.idempotencyKey`.                                                                                                               |
+| Execution-level fills (§27)           | ✅     | Orders carry an `executions[]` array of `{id, price, quantity, fees, timestamp}`. Maps onto the `Execution` model, with `executions[].id` as `brokerExecId` for idempotent ingestion.                                   |
+| Partial fills observable in practice  | ✅     | Of 83 filled orders, 8 filled in two slices and 2 in three. Partial fills are routine, not theoretical.                                                                                                                 |
+| Filled quantity and average price     | ✅     | `cumulative_quantity` and `average_price` map onto `filledQty` and `averageFillPrice`.                                                                                                                                  |
+| Per-order and per-fill fees (§29)     | ✅     | `fees` exists at both levels.                                                                                                                                                                                           |
+| Order states                          | ✅     | `new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided`. Needs a mapping onto our ten-state machine; the venue has no `UNKNOWN`, which we synthesise on transport failure. |
+| Session tagging (§7)                  | ✅     | `market_hours` is one of `regular_hours`, `extended_hours`, `all_day_hours`. Market and stop orders are regular-hours-only — a real constraint the calendar engine must encode.                                         |
+| Tax lots (§44)                        | ✅     | `get_equity_tax_lots` exposes `open_lot_id`, and specified-lot selling is supported. Maps onto `PositionLot`.                                                                                                           |
+| Multi-leg defined-risk options (§18)  | ⚠️     | Supported by the API (1–4 legs, verticals, condors, calendars, rolls) but requires an `option_level_3` account. Not available today.                                                                                    |
+
+Two constraints that shape Phase 8 and Phase 9:
+
+- **Only one account is reachable for trading.** Of the two accounts on file,
+  exactly one carries `agentic_allowed=true`; the other is read-only to an agent.
+  Live trading is confined to that account, and the broker adapter must treat the
+  flag as a hard precondition rather than discovering it at submission time.
+- **`ref_id` is null on orders placed by hand in the Robinhood app.** Reconciliation
+  therefore cannot match on `ref_id` alone — it must match on the broker's own
+  order `id`, and must expect to find orders it did not place. That is exactly the
+  "unexpected position detected" case in §22, and it is a real scenario, not a
+  hypothetical one.
 
 ## Known limitations
 
