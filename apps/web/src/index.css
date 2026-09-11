@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 24% 8%;
+    --foreground: 210 30% 96%;
+    --card: 222 22% 11%;
+    --card-foreground: 210 30% 96%;
+    --muted: 220 16% 18%;
+    --muted-foreground: 215 16% 66%;
+    --primary: 199 89% 52%;
+    --primary-foreground: 222 47% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 16% 20%;
+    --input: 220 16% 20%;
+    --ring: 199 89% 52%;
+    --profit: 152 66% 46%;
+    --loss: 0 72% 58%;
+  }
+
+  html.light {
+    --background: 210 30% 98%;
+    --foreground: 222 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+    --muted: 214 20% 93%;
+    --muted-foreground: 215 16% 40%;
+    --border: 214 20% 87%;
+    --input: 214 20% 87%;
+    --profit: 152 60% 34%;
+    --loss: 0 68% 46%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'tnum';
+  }
+
+  /* Numeric columns line up when digits are tabular. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .env-live {
+    @apply bg-red-600 text-white;
+  }
+  .env-paper {
+    @apply bg-amber-500 text-black;
+  }
+  .env-demo {
+    @apply bg-sky-600 text-white;
+  }
+}

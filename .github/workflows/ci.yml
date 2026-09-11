@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Test-only values. Real secrets never live in a workflow file (§53).
+  TEST_DATABASE_URL: postgresql://zusu:zusu@localhost:5432/zusu_trading_test?schema=public
+  DATABASE_URL: postgresql://zusu:zusu@localhost:5432/zusu_trading_test?schema=public
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zusu
+          POSTGRES_PASSWORD: zusu
+          POSTGRES_DB: zusu_trading_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U zusu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace @zusu/shared
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations
+        run: npx --workspace @zusu/api prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  demo-smoke:
+    name: Demo mode boots and serves real data
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zusu
+          POSTGRES_PASSWORD: zusu
+          POSTGRES_DB: zusu_trading
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U zusu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://zusu:zusu@localhost:5432/zusu_trading?schema=public
+      JWT_SECRET: ci-jwt-secret-that-is-definitely-long-enough-0000
+      COOKIE_SECRET: ci-cookie-secret-that-is-definitely-long-enough-0
+      CREDENTIAL_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      COOKIE_SECURE: 'false'
+      DEFAULT_ENVIRONMENT: DEMO
+      ALLOW_LIVE_TRADING: 'false'
+      # The smoke test speaks plain HTTP, so it cannot use secure cookies — and
+      # the config loader refuses COOKIE_SECURE=false under NODE_ENV=production
+      # by design. Production images are exercised by the `docker` job instead.
+      NODE_ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspace @zusu/shared
+      - run: npm run db:generate
+      - run: npx --workspace @zusu/api prisma migrate deploy
+      - run: npm run seed
+      - run: npm run build --workspace @zusu/api
+
+      - name: Boot the API and exercise demo mode
+        run: |
+          node apps/api/dist/server.js &
+          API_PID=$!
+          trap "kill $API_PID" EXIT
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4000/api/system/live && break
+            sleep 1
+          done
+
+          # Sign in as the seeded manager and read real portfolio data.
+          COOKIES=$(mktemp)
+          curl -sf -c "$COOKIES" -X POST http://localhost:4000/api/auth/login \
+            -H 'content-type: application/json' \
+            -d '{"email":"manager@zusu.local","password":"DemoTrading2026!"}' \
+            | grep -q '"status":"AUTHENTICATED"'
+
+          curl -sf -b "$COOKIES" http://localhost:4000/api/portfolios | grep -q '"environment":"DEMO"'
+          curl -sf -b "$COOKIES" http://localhost:4000/api/system/health | grep -q '"overall":"HEALTHY"'
+
+  docker:
+    name: Container images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false

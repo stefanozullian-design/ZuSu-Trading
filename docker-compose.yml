@@ -1,0 +1,82 @@
+# ---------------------------------------------------------------------------
+# ZuSu Trading — local stack.
+#
+#   cp .env.example .env   (then fill in the three secrets)
+#   docker compose up --build
+#   docker compose exec api npx --workspace @zusu/api prisma migrate deploy
+#   docker compose exec api node -e "require('child_process')" # see README for seeding
+#
+# The web client is served on http://localhost:8080 and proxies /api to the API
+# container, so the browser sees a single origin.
+# ---------------------------------------------------------------------------
+name: zusu-trading
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zusu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zusu}
+      POSTGRES_DB: zusu_trading
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U zusu -d zusu_trading']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DATABASE_URL: postgresql://zusu:${POSTGRES_PASSWORD:-zusu}@postgres:5432/zusu_trading?schema=public
+      REDIS_URL: redis://redis:6379
+      # Secrets come from the host environment or .env — never baked into the image.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET in .env}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?set CREDENTIAL_ENCRYPTION_KEY in .env}
+      DEFAULT_ENVIRONMENT: ${DEFAULT_ENVIRONMENT:-DEMO}
+      ALLOW_LIVE_TRADING: ${ALLOW_LIVE_TRADING:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      # The stack terminates TLS in front of nginx in a real deployment; the
+      # local compose file runs plain HTTP, so secure cookies are off here.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '4000:4000'
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - '8080:8080'
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

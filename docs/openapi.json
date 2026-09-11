@@ -1,0 +1,2331 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ZuSu Trading API",
+    "version": "0.1.0",
+    "description": "Day-trading automation platform. Phase 1 covers identity, portfolios, the demo broker, the trading gate and the audit log. Endpoints that would place orders do not exist yet — they arrive with the risk engine and order manager."
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "zusu_at"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "Sign in with email and password",
+        "tags": ["auth"],
+        "description": "Returns a session, or an MFA challenge when the account requires a second factor. Administrators must complete MFA enrolment before a session is issued.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "totp": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                },
+                "required": ["email", "password"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["MFA_REQUIRED"]
+                        },
+                        "mfaToken": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["status", "mfaToken"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["MFA_ENROLMENT_REQUIRED"]
+                        },
+                        "mfaToken": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["status", "mfaToken"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["AUTHENTICATED"]
+                        },
+                        "user": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "email": {
+                              "type": "string",
+                              "format": "email"
+                            },
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": ["ADMIN", "MANAGER", "CLIENT", "VIEWER"]
+                            },
+                            "mfaEnabled": {
+                              "type": "boolean"
+                            },
+                            "permissions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "portfolioIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "email",
+                            "displayName",
+                            "role",
+                            "mfaEnabled",
+                            "permissions",
+                            "portfolioIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "csrfToken": {
+                          "type": "string"
+                        },
+                        "accessTokenExpiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": ["status", "user", "csrfToken", "accessTokenExpiresAt"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/enrol": {
+      "post": {
+        "summary": "Start multi-factor enrolment using a login challenge token",
+        "tags": ["auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mfaToken": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["mfaToken"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": {
+                      "type": "string"
+                    },
+                    "otpauthUrl": {
+                      "type": "string"
+                    },
+                    "qrDataUrl": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["secret", "otpauthUrl", "qrDataUrl"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/verify": {
+      "post": {
+        "summary": "Complete an MFA challenge and receive a session",
+        "tags": ["auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mfaToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "totp": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                },
+                "required": ["mfaToken", "totp"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["AUTHENTICATED"]
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": ["ADMIN", "MANAGER", "CLIENT", "VIEWER"]
+                        },
+                        "mfaEnabled": {
+                          "type": "boolean"
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "portfolioIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "displayName",
+                        "role",
+                        "mfaEnabled",
+                        "permissions",
+                        "portfolioIds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "csrfToken": {
+                      "type": "string"
+                    },
+                    "accessTokenExpiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["status", "user", "csrfToken", "accessTokenExpiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/setup": {
+      "post": {
+        "summary": "Start multi-factor enrolment for the signed-in user",
+        "tags": ["auth"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": {
+                      "type": "string"
+                    },
+                    "otpauthUrl": {
+                      "type": "string"
+                    },
+                    "qrDataUrl": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["secret", "otpauthUrl", "qrDataUrl"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/activate": {
+      "post": {
+        "summary": "Confirm an authenticator code and switch MFA on",
+        "tags": ["auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "totp": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                },
+                "required": ["totp"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mfaEnabled": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["mfaEnabled"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Rotate the refresh token and issue a new access token",
+        "tags": ["auth"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": ["ADMIN", "MANAGER", "CLIENT", "VIEWER"]
+                        },
+                        "mfaEnabled": {
+                          "type": "boolean"
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "portfolioIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "displayName",
+                        "role",
+                        "mfaEnabled",
+                        "permissions",
+                        "portfolioIds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "csrfToken": {
+                      "type": "string"
+                    },
+                    "accessTokenExpiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["user", "csrfToken", "accessTokenExpiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Revoke the current session",
+        "tags": ["auth"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "The signed-in user, their permissions and reachable portfolios",
+        "tags": ["auth"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": ["ADMIN", "MANAGER", "CLIENT", "VIEWER"]
+                    },
+                    "mfaEnabled": {
+                      "type": "boolean"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "portfolioIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email",
+                    "displayName",
+                    "role",
+                    "mfaEnabled",
+                    "permissions",
+                    "portfolioIds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/": {
+      "get": {
+        "summary": "List clients",
+        "tags": ["clients"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "externalRef": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "contactEmail": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      },
+                      "portfolioCount": {
+                        "type": "integer"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "externalRef",
+                      "contactEmail",
+                      "isActive",
+                      "portfolioCount",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a client",
+        "tags": ["clients"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "externalRef": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "externalRef": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "contactEmail": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "portfolioCount": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "externalRef",
+                    "contactEmail",
+                    "isActive",
+                    "portfolioCount",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/portfolios/": {
+      "get": {
+        "summary": "Portfolios the caller may see",
+        "tags": ["portfolios"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "type": "string",
+                        "enum": ["DEMO", "PAPER", "LIVE"]
+                      },
+                      "clientId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                      },
+                      "clientName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "baseCurrency": {
+                        "type": "string"
+                      },
+                      "executionMode": {
+                        "type": "string",
+                        "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"]
+                      },
+                      "tradingState": {
+                        "type": "string",
+                        "enum": ["ACTIVE", "HALTED", "RECONCILIATION_ERROR"]
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      },
+                      "cashBalance": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "positionsValue": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "equity": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "initialCapital": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "dailyPnl": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "dailyPnlPct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "openPositions": {
+                        "type": "integer"
+                      },
+                      "dailyRiskUsedPct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "killSwitchEngaged": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "environment",
+                      "clientId",
+                      "clientName",
+                      "baseCurrency",
+                      "executionMode",
+                      "tradingState",
+                      "isActive",
+                      "cashBalance",
+                      "positionsValue",
+                      "equity",
+                      "initialCapital",
+                      "dailyPnl",
+                      "dailyPnlPct",
+                      "openPositions",
+                      "dailyRiskUsedPct",
+                      "killSwitchEngaged"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a portfolio with conservative default risk limits",
+        "tags": ["portfolios"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "environment": {
+                    "type": "string",
+                    "enum": ["DEMO", "PAPER", "LIVE"]
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "baseCurrency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3,
+                    "default": "USD"
+                  },
+                  "initialCapital": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "executionMode": {
+                    "type": "string",
+                    "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"],
+                    "default": "MANUAL_APPROVAL"
+                  },
+                  "riskLimits": {
+                    "type": "object",
+                    "properties": {
+                      "maxDailyLoss": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxWeeklyLoss": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxPositionSize": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxPortfolioExposurePct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxSectorExposurePct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxSymbolExposurePct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "maxOpenPositions": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "maxTradesPerDay": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
+                      },
+                      "maxConsecutiveLosses": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "maxDrawdownPct": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["name", "environment", "initialCapital"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "clientName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "baseCurrency": {
+                      "type": "string"
+                    },
+                    "executionMode": {
+                      "type": "string",
+                      "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"]
+                    },
+                    "tradingState": {
+                      "type": "string",
+                      "enum": ["ACTIVE", "HALTED", "RECONCILIATION_ERROR"]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "cashBalance": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "positionsValue": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "equity": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "initialCapital": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "dailyPnl": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "dailyPnlPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "openPositions": {
+                      "type": "integer"
+                    },
+                    "dailyRiskUsedPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "killSwitchEngaged": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "environment",
+                    "clientId",
+                    "clientName",
+                    "baseCurrency",
+                    "executionMode",
+                    "tradingState",
+                    "isActive",
+                    "cashBalance",
+                    "positionsValue",
+                    "equity",
+                    "initialCapital",
+                    "dailyPnl",
+                    "dailyPnlPct",
+                    "openPositions",
+                    "dailyRiskUsedPct",
+                    "killSwitchEngaged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/portfolios/{id}": {
+      "get": {
+        "summary": "A single portfolio summary",
+        "tags": ["portfolios"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "clientName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "baseCurrency": {
+                      "type": "string"
+                    },
+                    "executionMode": {
+                      "type": "string",
+                      "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"]
+                    },
+                    "tradingState": {
+                      "type": "string",
+                      "enum": ["ACTIVE", "HALTED", "RECONCILIATION_ERROR"]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "cashBalance": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "positionsValue": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "equity": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "initialCapital": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "dailyPnl": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "dailyPnlPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "openPositions": {
+                      "type": "integer"
+                    },
+                    "dailyRiskUsedPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "killSwitchEngaged": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "environment",
+                    "clientId",
+                    "clientName",
+                    "baseCurrency",
+                    "executionMode",
+                    "tradingState",
+                    "isActive",
+                    "cashBalance",
+                    "positionsValue",
+                    "equity",
+                    "initialCapital",
+                    "dailyPnl",
+                    "dailyPnlPct",
+                    "openPositions",
+                    "dailyRiskUsedPct",
+                    "killSwitchEngaged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Rename a portfolio, change its execution mode or deactivate it",
+        "tags": ["portfolios"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "executionMode": {
+                    "type": "string",
+                    "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"]
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "clientName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "baseCurrency": {
+                      "type": "string"
+                    },
+                    "executionMode": {
+                      "type": "string",
+                      "enum": ["OBSERVE", "MANUAL_APPROVAL", "LIMITED_AUTO", "FULL_AUTO"]
+                    },
+                    "tradingState": {
+                      "type": "string",
+                      "enum": ["ACTIVE", "HALTED", "RECONCILIATION_ERROR"]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "cashBalance": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "positionsValue": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "equity": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "initialCapital": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "dailyPnl": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "dailyPnlPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "openPositions": {
+                      "type": "integer"
+                    },
+                    "dailyRiskUsedPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$",
+                      "nullable": true
+                    },
+                    "killSwitchEngaged": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "environment",
+                    "clientId",
+                    "clientName",
+                    "baseCurrency",
+                    "executionMode",
+                    "tradingState",
+                    "isActive",
+                    "cashBalance",
+                    "positionsValue",
+                    "equity",
+                    "initialCapital",
+                    "dailyPnl",
+                    "dailyPnlPct",
+                    "openPositions",
+                    "dailyRiskUsedPct",
+                    "killSwitchEngaged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/portfolios/{id}/positions": {
+      "get": {
+        "summary": "Open positions recorded for a portfolio",
+        "tags": ["portfolios"],
+        "description": "Mark prices come from the environment’s market-data source. When none is available the mark and derived values are null rather than an entry-price stand-in.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "portfolioId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "symbol": {
+                        "type": "string"
+                      },
+                      "assetClass": {
+                        "type": "string",
+                        "enum": ["EQUITY", "OPTION", "CRYPTO", "ETF"]
+                      },
+                      "quantity": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "averageEntryPrice": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "markPrice": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "marketValue": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "unrealizedPnl": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$",
+                        "nullable": true
+                      },
+                      "realizedPnl": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "openedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "portfolioId",
+                      "symbol",
+                      "assetClass",
+                      "quantity",
+                      "averageEntryPrice",
+                      "markPrice",
+                      "marketValue",
+                      "unrealizedPnl",
+                      "realizedPnl",
+                      "openedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/{id}/account": {
+      "get": {
+        "summary": "The broker’s own view of the account behind a portfolio",
+        "tags": ["broker"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "cash": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "buyingPower": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "equity": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "isPatternDayTrader": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "environment",
+                    "currency",
+                    "cash",
+                    "buyingPower",
+                    "equity",
+                    "isPatternDayTrader",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/{id}/positions": {
+      "get": {
+        "summary": "Positions as the broker reports them (the reconciliation counterpart)",
+        "tags": ["broker"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      },
+                      "assetClass": {
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "averageEntryPrice": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "markPrice": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "marketValue": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "unrealizedPnl": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "symbol",
+                      "assetClass",
+                      "quantity",
+                      "averageEntryPrice",
+                      "markPrice",
+                      "marketValue",
+                      "unrealizedPnl",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/{id}/quote/{symbol}": {
+      "get": {
+        "summary": "A quote from the portfolio environment’s market-data source",
+        "tags": ["broker"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24,
+              "pattern": "^[A-Z0-9.\\-/:]+$"
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "bid": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "ask": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "volume": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "marketSession": {
+                      "type": "string"
+                    },
+                    "sourceTimestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "receivedTimestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "symbol",
+                    "provider",
+                    "price",
+                    "bid",
+                    "ask",
+                    "volume",
+                    "marketSession",
+                    "sourceTimestamp",
+                    "receivedTimestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/portfolios/{id}/gate": {
+      "get": {
+        "summary": "Whether this portfolio may trade right now, and what is blocking it",
+        "tags": ["risk"],
+        "description": "The same decision the order manager will enforce before submitting an order. Portfolio limits (daily loss, exposure, correlation) join it in Phase 7.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "allowed": {
+                      "type": "boolean"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string",
+                            "enum": ["BLOCKING", "WARNING"]
+                          }
+                        },
+                        "required": ["code", "message", "severity"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "checkedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["portfolioId", "allowed", "blockers", "checkedAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/portfolios/{id}/limits": {
+      "get": {
+        "summary": "Active risk limits for a portfolio",
+        "tags": ["risk"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "maxDailyLoss": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxWeeklyLoss": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxPositionSize": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxPortfolioExposurePct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxSectorExposurePct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxSymbolExposurePct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    },
+                    "maxOpenPositions": {
+                      "type": "integer"
+                    },
+                    "maxTradesPerDay": {
+                      "type": "integer"
+                    },
+                    "maxConsecutiveLosses": {
+                      "type": "integer"
+                    },
+                    "maxDrawdownPct": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d+)?$"
+                    }
+                  },
+                  "required": [
+                    "portfolioId",
+                    "version",
+                    "maxDailyLoss",
+                    "maxWeeklyLoss",
+                    "maxPositionSize",
+                    "maxPortfolioExposurePct",
+                    "maxSectorExposurePct",
+                    "maxSymbolExposurePct",
+                    "maxOpenPositions",
+                    "maxTradesPerDay",
+                    "maxConsecutiveLosses",
+                    "maxDrawdownPct"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/kill-switch": {
+      "post": {
+        "summary": "Stop all trading",
+        "tags": ["risk"],
+        "description": "Halts the named portfolio, or every portfolio the caller can reach. Resting entry orders are cancelled; open positions are left untouched and keep being monitored.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  },
+                  "portfolioId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": ["reason"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfoliosHalted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "ordersCancelled": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "engagedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["portfoliosHalted", "ordersCancelled", "reason", "engagedAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/portfolios/{id}/resume": {
+      "post": {
+        "summary": "Release a halt (administrators only)",
+        "tags": ["risk"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "required": ["reason"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "tradingState": {
+                      "type": "string",
+                      "enum": ["ACTIVE", "HALTED", "RECONCILIATION_ERROR"]
+                    }
+                  },
+                  "required": ["portfolioId", "tradingState"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/": {
+      "get": {
+        "summary": "Read the append-only audit log",
+        "tags": ["audit"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "query",
+            "name": "portfolioId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "action",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "query",
+            "name": "actorId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "seq": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "occurredAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "actorType": {
+                            "type": "string"
+                          },
+                          "actorUserId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "actorEmail": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "entityType": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "entityId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "portfolioId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "environment": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "correlationId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "beforeValue": {
+                            "nullable": true
+                          },
+                          "afterValue": {
+                            "nullable": true
+                          },
+                          "metadata": {
+                            "nullable": true
+                          },
+                          "ip": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "hash": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "seq",
+                          "id",
+                          "occurredAt",
+                          "action",
+                          "actorType",
+                          "actorUserId",
+                          "actorEmail",
+                          "entityType",
+                          "entityId",
+                          "portfolioId",
+                          "environment",
+                          "correlationId",
+                          "ip",
+                          "hash"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["entries", "nextCursor"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/verify": {
+      "get": {
+        "summary": "Recompute the audit hash chain and report any broken link",
+        "tags": ["audit"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "checked": {
+                      "type": "integer"
+                    },
+                    "brokenAtSeq": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["valid", "checked"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/live": {
+      "get": {
+        "summary": "Liveness probe",
+        "tags": ["system"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["ok"]
+                    }
+                  },
+                  "required": ["status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ready": {
+      "get": {
+        "summary": "Readiness probe — fails when the database is unreachable",
+        "tags": ["system"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["ready", "degraded"]
+                    }
+                  },
+                  "required": ["status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["unavailable"]
+                    }
+                  },
+                  "required": ["status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/health": {
+      "get": {
+        "summary": "Per-service health for the system health panel",
+        "tags": ["system"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "overall": {
+                      "type": "string",
+                      "enum": ["HEALTHY", "DEGRADED", "DOWN", "DISABLED", "UNKNOWN"]
+                    },
+                    "tradingEnabled": {
+                      "type": "boolean"
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "service": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["HEALTHY", "DEGRADED", "DOWN", "DISABLED", "UNKNOWN"]
+                          },
+                          "lastHeartbeatAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "latencyMs": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "detail": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": ["service", "status", "lastHeartbeatAt", "latencyMs", "detail"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "checkedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["environment", "overall", "tradingEnabled", "services", "checkedAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/environment": {
+      "get": {
+        "summary": "The environment this deployment runs in and what it implies",
+        "tags": ["system"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "environment": {
+                      "type": "string",
+                      "enum": ["DEMO", "PAPER", "LIVE"]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "indicator": {
+                      "type": "string"
+                    },
+                    "tone": {
+                      "type": "string",
+                      "enum": ["blue", "amber", "red"]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "usesRealMoney": {
+                      "type": "boolean"
+                    },
+                    "requiresExplicitConfirmation": {
+                      "type": "boolean"
+                    },
+                    "liveTradingAllowed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "environment",
+                    "label",
+                    "indicator",
+                    "tone",
+                    "description",
+                    "usesRealMoney",
+                    "requiresExplicitConfirmation",
+                    "liveTradingAllowed"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "this deployment"
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Sessions, MFA and the current user"
+    },
+    {
+      "name": "clients",
+      "description": "Client records"
+    },
+    {
+      "name": "portfolios",
+      "description": "Portfolios and positions"
+    },
+    {
+      "name": "broker",
+      "description": "Read-only broker views"
+    },
+    {
+      "name": "risk",
+      "description": "Trading gate, limits and the kill switch"
+    },
+    {
+      "name": "audit",
+      "description": "Append-only audit log"
+    },
+    {
+      "name": "system",
+      "description": "Health, readiness and environment"
+    }
+  ]
+}
