@@ -4,7 +4,7 @@ A day-trading automation platform built so that **AI can recommend a trade but c
 never authorise one**. Every order passes a deterministic risk engine, every action
 is auditable, and the system fails safe when a dependency disappears.
 
-> **Phase 1 complete; Phase 2 (market data) in progress.** Identity, portfolios,
+> **Phases 1 and 2 complete.** Identity, portfolios,
 > the demo broker, the trading gate, the kill switch and the audit log work end
 > to end. Market data adds the provider adapter, a data-quality layer, the market
 > calendar and a local indicator engine, all visible on the **Market** page.
@@ -78,6 +78,17 @@ the former Polygon.io; its free tier is end-of-day only, so intraday needs a
 paid plan.
 
 API docs are at <http://localhost:4000/docs>.
+
+### Tests
+
+```bash
+npm test              # 487 unit and integration tests
+npm run test:e2e      # 38 Playwright specs against a real browser
+```
+
+The end-to-end suite manages its own database, API and web server. It migrates,
+seeds and backfills through the same npm scripts listed above, so a broken setup
+path fails the suite rather than surprising you later.
 
 ### With Docker
 

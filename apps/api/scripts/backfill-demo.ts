@@ -10,8 +10,15 @@
 import { buildContainer } from '../src/container.js';
 import type { Timeframe } from '../src/modules/market-data/types.js';
 
-const TIMEFRAMES: Timeframe[] = ['5m', '1d'];
-const DAYS_BACK = 30;
+/**
+ * Window and timeframes are overridable so a test run can seed a few days in
+ * seconds rather than waiting on a month of five-minute bars.
+ */
+const TIMEFRAMES = (process.env.BACKFILL_TIMEFRAMES ?? '5m,1d')
+  .split(',')
+  .map((t) => t.trim())
+  .filter(Boolean) as Timeframe[];
+const DAYS_BACK = Number(process.env.BACKFILL_DAYS ?? '30');
 
 async function main(): Promise<void> {
   const container = buildContainer();

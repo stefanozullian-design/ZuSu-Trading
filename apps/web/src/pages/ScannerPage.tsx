@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { ScanCondition, ScanRunResult, SavedScan, Watchlist } from '@/lib/types';
@@ -64,7 +64,7 @@ export function ScannerPage() {
       setError(null);
     },
     onError: (err: Error) => {
-      setError(err.message);
+      setError(explain(err));
       setResult(null);
     },
   });
@@ -83,7 +83,7 @@ export function ScannerPage() {
       setWatchlistId(scan.watchlistId ?? '');
       void queryClient.invalidateQueries({ queryKey: ['scans'] });
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setError(explain(err)),
   });
 
   const save = useMutation({
@@ -102,7 +102,7 @@ export function ScannerPage() {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['scans'] });
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setError(explain(err)),
   });
 
   const remove = useMutation({
@@ -380,4 +380,30 @@ function formatValue(value: string | undefined): string {
   if (abs >= 1_000_000) return `${(parsed / 1_000_000).toFixed(2)}M`;
   if (abs >= 10_000) return parsed.toLocaleString(undefined, { maximumFractionDigits: 0 });
   return parsed.toFixed(abs < 1 ? 4 : 2);
+}
+
+/**
+ * A message the user can act on.
+ *
+ * Schema validation returns a generic "did not match the expected shape" with
+ * the useful part — which field, and why — in `details`. A refusal nobody can
+ * act on is barely better than silence, so the detail is appended.
+ */
+function explain(error: Error): string {
+  if (!(error instanceof ApiError)) return error.message;
+
+  const details = error.details;
+  if (!Array.isArray(details)) return error.message;
+
+  const parts = details
+    .map((detail) => {
+      if (typeof detail !== 'object' || detail === null) return null;
+      const { path, message } = detail as { path?: unknown; message?: unknown };
+      if (typeof message !== 'string') return null;
+      const field = typeof path === 'string' ? path.split('/').filter(Boolean).pop() : null;
+      return field ? `${field} ${message}` : message;
+    })
+    .filter((part): part is string => part !== null);
+
+  return parts.length > 0 ? `${error.message} ${parts.join('; ')}` : error.message;
 }

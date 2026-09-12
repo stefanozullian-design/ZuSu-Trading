@@ -2,7 +2,7 @@
   "name": "zusu-trading",
   "private": true,
   "version": "0.1.0",
-  "description": "ZuSu Trading — day-trading automation platform (DEMO / PAPER / LIVE)",
+  "description": "ZuSu Trading \u2014 day-trading automation platform (DEMO / PAPER / LIVE)",
   "engines": {
     "node": ">=20.11"
   },
@@ -15,7 +15,7 @@
     "dev": "npm run dev -w @zusu/api & npm run dev -w @zusu/web",
     "dev:api": "npm run dev -w @zusu/api",
     "dev:web": "npm run dev -w @zusu/web",
-    "typecheck": "npm run typecheck -w @zusu/shared && npm run typecheck -w @zusu/api && npm run typecheck -w @zusu/web",
+    "typecheck": "npm run typecheck -w @zusu/shared && npm run typecheck -w @zusu/api && npm run typecheck -w @zusu/web && tsc -p e2e/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -28,10 +28,13 @@
     "db:deploy": "npm run db:deploy -w @zusu/api",
     "db:reset": "npm run db:reset -w @zusu/api",
     "seed": "npm run seed -w @zusu/api",
-    "docs:openapi": "npm run docs:openapi -w @zusu/api"
+    "docs:openapi": "npm run docs:openapi -w @zusu/api",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@playwright/test": "^1.63.0",
     "eslint": "^9.13.0",
     "prettier": "^3.3.3",
     "typescript": "^5.6.3",

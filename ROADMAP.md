@@ -4,8 +4,7 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 2 in progress** (provider, adapter, quality layer,
-calendar engine and indicators done; watchlists, scanner and charts remain).
+Current position: **Phase 2 complete.** Phase 3 (strategies) is next.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -15,7 +14,7 @@ See [BUILD_STATUS.md](./BUILD_STATUS.md).
 Authentication, users, clients, portfolios, the database, the demo broker, the
 dashboard and audit logging. No live trading.
 
-## Phase 2 — Market data
+## Phase 2 — Market data ✅
 
 Market-data provider adapter, market-data quality layer, market-calendar engine,
 indicator engine, watchlists, scanner, charts.

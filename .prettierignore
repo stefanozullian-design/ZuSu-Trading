@@ -3,3 +3,5 @@ dist
 coverage
 apps/api/prisma/migrations
 package-lock.json
+e2e/.artifacts
+playwright-report

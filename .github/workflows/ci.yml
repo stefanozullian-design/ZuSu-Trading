@@ -164,3 +164,56 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: false
+
+  e2e:
+    name: End-to-end (browser)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zusu
+          POSTGRES_PASSWORD: zusu
+          POSTGRES_DB: zusu_trading_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U zusu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      E2E_DATABASE_URL: postgresql://zusu:zusu@localhost:5432/zusu_trading_e2e?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspace @zusu/shared
+      - run: npm run db:generate
+
+      # Only Chromium: these specs assert application behaviour, not browser
+      # differences, and three engines would triple the run for no signal.
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # global-setup migrates, seeds and backfills through the real commands,
+      # so a broken README path fails here rather than surprising a contributor.
+      - name: Run the end-to-end suite
+        run: npm run test:e2e
+
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            e2e/.artifacts/
+          retention-days: 7

@@ -12,3 +12,8 @@ coverage/
 playwright-report/
 test-results/
 apps/api/prisma/.tmp/
+
+# Playwright
+e2e/.artifacts/
+playwright-report/
+test-results/

@@ -24,7 +24,18 @@ import type { WatchlistService } from './watchlist.service.js';
  */
 
 const operandSchema = z.union([
-  z.object({ constant: z.string().min(1).max(32) }),
+  z.object({
+    // Refused here rather than left to the evaluator. A typo in a threshold
+    // would otherwise surface as "no symbol could be evaluated", which reads
+    // like missing data instead of a mistake the user can fix.
+    constant: z
+      .string()
+      .min(1)
+      .max(32)
+      .refine((value) => Number.isFinite(Number(value)), {
+        message: 'must be a number',
+      }),
+  }),
   z.object({ field: z.enum(SCAN_FIELDS) }),
 ]);
 

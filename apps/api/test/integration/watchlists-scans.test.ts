@@ -291,6 +291,18 @@ describe('scans — running an ad-hoc filter', () => {
     expect(response.statusCode).toBe(422);
   });
 
+  it('rejects a threshold that is not a number', async () => {
+    const response = await asManager('POST', '/api/market-data/scans/run', {
+      timeframe: '5m',
+      conditions: [{ field: 'rsi14', operator: 'lt', operand: { constant: 'thirty' } }],
+    });
+
+    // Refused at the edge rather than left to the evaluator, where it would
+    // surface as "no symbol could be evaluated" — indistinguishable from
+    // missing market data.
+    expect(response.statusCode).toBe(422);
+  });
+
   it('rejects between without an upper bound', async () => {
     const response = await asManager('POST', '/api/market-data/scans/run', {
       timeframe: '5m',

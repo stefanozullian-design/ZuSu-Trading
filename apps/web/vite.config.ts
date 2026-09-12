@@ -2,6 +2,10 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
+// Overridable so the end-to-end suite can point at its own API instance
+// rather than competing with a development server on the default port.
+const apiTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:4000';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -12,8 +16,8 @@ export default defineConfig({
     // Proxying keeps the API same-origin in development, so session cookies
     // stay SameSite=Lax rather than needing SameSite=None.
     proxy: {
-      '/api': { target: 'http://localhost:4000', changeOrigin: true },
-      '/ws': { target: 'ws://localhost:4000', ws: true },
+      '/api': { target: apiTarget, changeOrigin: true },
+      '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
     },
   },
   build: { outDir: 'dist', sourcemap: true },
