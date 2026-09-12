@@ -4,7 +4,7 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 3 complete.** Phase 4 (backtesting) is next.
+Current position: **Phase 4 complete.** Phase 5 (paper trading) is next.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -45,7 +45,7 @@ DRAFT → BACKTEST → PAPER → REVIEW → APPROVED → LIVE one rung at a time
 approved without a stop loss, records who signed the approval, and cannot go live
 beside another live version. Approved is not running: the last step is separate.
 
-## Phase 4 — Backtesting
+## Phase 4 — Backtesting ✅
 
 Historical data pipeline, event-driven backtest engine, performance metrics,
 walk-forward analysis, Monte Carlo, strategy comparison, parameter optimisation
@@ -55,6 +55,14 @@ Exit criteria: a look-ahead-bias test suite passes (only information available a
 time T may inform a decision at T); fees, spread and slippage are modelled and
 gross returns are never reported as realised performance; optimised parameters are
 never deployed automatically.
+
+All three hold. A decision on a closed bar fills at the next bar's open, the
+look-ahead suite includes a prefix-invariance proof, and walk-forward folds
+recompute their indicators rather than borrowing a series computed over the whole
+history. Commission, half the spread and a slippage fraction are charged on every
+fill; the gross figure is reported beside the net one so the cost is visible.
+Optimisation returns a ranking and the reasons to doubt it, stores nothing, and
+cannot write a version.
 
 ## Phase 5 — Paper trading
 

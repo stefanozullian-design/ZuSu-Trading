@@ -98,6 +98,34 @@ Evaluation accounts for every symbol it looked at: fired, rejected, already
 signalled on this bar, or **could not be judged** with the reason — a rule that
 cannot be evaluated returns unknown, and unknown is never permission to trade.
 
+### The Backtests page
+
+`/backtests` runs a strategy version over stored history. The design rule is
+that a result never arrives without its assumptions, so the page shows, beside
+every number:
+
+- **How it was modelled.** A decision on a closed bar fills at the next bar's
+  open. A stop fills at its own price unless the bar gapped through it, in which
+  case it fills at the open — the worse price. A bar containing both the stop
+  and the target resolves as the stop, because a bar is a summary and not a
+  path.
+- **What it cost.** Commission, half the spread and a slippage fraction are
+  charged on every fill; the gross figure sits next to the net one. The cost
+  inputs are editable so you can see what they cost, not so they can be
+  switched off.
+- **What qualifies it.** Ambiguous exits, gaps through a stop, bars that could
+  not be judged, signals not acted on, positions still open at the end.
+- **What it refuses to tell you.** Sharpe and Sortino are withheld below thirty
+  observations, CAGR below a month, the profit factor when nothing lost. An
+  unavailable statistic renders as `—`, never as zero.
+
+Walk-forward splits the window into consecutive in-sample and out-of-sample
+folds and recomputes indicators per fold, so no fold reads its own future.
+Monte Carlo resamples the realised trades from a fixed seed — a statement about
+sequence risk, not a forecast. Parameter search ranks candidates and reports the
+reasons to doubt the ranking; it stores nothing and cannot write a version,
+because choosing live rules from a search of the past is a person's decision.
+
 To point the market pages at real data instead of the simulator, set
 `MARKET_DATA_PROVIDER=MASSIVE` and `MASSIVE_API_KEY` in `.env`. Massive.com is
 the former Polygon.io; its free tier is end-of-day only, so intraday needs a
@@ -108,8 +136,8 @@ API docs are at <http://localhost:4000/docs>.
 ### Tests
 
 ```bash
-npm test              # 579 unit and integration tests
-npm run test:e2e      # 46 Playwright specs against a real browser
+npm test              # 649 unit and integration tests
+npm run test:e2e      # 53 Playwright specs against a real browser
 ```
 
 The end-to-end suite manages its own database, API and web server. It migrates,

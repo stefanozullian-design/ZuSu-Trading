@@ -1,6 +1,6 @@
 # Build status
 
-**Current phase: 3 — Strategies. Complete.** Phase 4 (backtesting) is next.
+**Current phase: 4 — Backtesting. Complete.** Phase 5 (paper trading) is next.
 **Live trading: not possible.** No route in this API can create an order, and
 `ALLOW_LIVE_TRADING` defaults to false.
 
@@ -151,20 +151,77 @@ of the listing down with it. The Phase 1 seed's placeholder definitions were
 exactly this case, invented before the rule language existed; they are now
 written in the real one, because demo data the product cannot read is fiction.
 
+### Phase 4 — Backtesting
+
+| Step                     | State                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| 1. Historical pipeline   | Done — ranged candle loads, no longer silently trimmed to the newest 500 bars.                   |
+| 2. Event-driven engine   | Done — one time-ordered walk across every symbol, sharing capital and the position limit.        |
+| 3. Performance metrics   | Done — net of every modelled cost, with the statistics it refuses to compute named as refusals.  |
+| 4. Walk-forward          | Done — consecutive in/out-of-sample folds, indicators recomputed per fold.                       |
+| 5. Monte Carlo           | Done — seeded resampling of the realised trades, reported as sequence risk rather than forecast. |
+| 6. Parameter search      | Done — a ranking plus the reasons to doubt it. Stores nothing and cannot write a version.        |
+| 7. Look-ahead-bias suite | Done — including a prefix-invariance proof.                                                      |
+| 8. The Backtests page    | Done — `/backtests`, where every result arrives with its assumptions.                            |
+
+**The engine's five rules, each the opposite of a standard way a backtest
+lies:**
+
+1. **A decision on bar N fills at the open of bar N+1.** The rule is evaluated
+   on a closed bar, so its close is known; filling there would be trading on
+   information that arrived at the moment of the decision. A signal on the last
+   bar therefore produces no trade at all rather than a fill at a price nobody
+   could have had.
+2. **Costs are never optional.** A half-spread and a slippage fraction move
+   every fill against the position and commission is charged on both sides.
+   Gross and net are reported side by side.
+3. **A gap fills at the open, not at the stop.** Pretending the stop held
+   through a gap is the single most common way a backtest overstates a
+   strategy.
+4. **An ambiguous bar resolves against the position.** A bar is a summary, not
+   a path: when its range contains both the stop and the target, nothing in the
+   data says which came first. The stop is taken and those bars are counted, so
+   a result resting on many of them can be distrusted on the evidence.
+5. **Unknown is not a signal.** A bar whose indicators have not warmed up
+   produces no trade and is counted separately from the rule saying no.
+
+**The metrics refuse as much as they report.** Sharpe and Sortino are withheld
+below thirty return observations; CAGR is withheld for a window under a month;
+the profit factor is null rather than infinite when nothing lost; a constant
+return stream gets no ratio at all, because dividing by arithmetic residue
+produced a Sharpe in the quadrillions. Where a ratio is defined but misleading
+— capital at risk in under a quarter of the bars inflates an annualised figure
+well past anything a person would experience — it is reported with that stated
+next to it rather than quietly.
+
+**Optimisation always argues against itself.** Every search reports that the
+best of many candidates is partly a measure of how many were tried, plus
+warnings for a thin trade count, a sharp peak rather than a plateau, a runner-up
+less than half as good, and a mostly-unprofitable family. It writes nothing: a
+search of the past choosing the rules that trade real money is the decision this
+platform reserves for a person.
+
+**One bug this phase surfaced, worth recording.** The candle loader defaulted to
+the newest 500 bars, and a ranged load inherited that default — so the first
+backtest over a month of history quietly read five days and labelled the result
+as a month. A ranged load is now bounded by its range, a load that would exceed
+100,000 rows fails rather than returning a short window, and every stored result
+carries the span its bars actually covered.
+
 ### Test coverage
 
-579 unit and integration tests plus 46 end-to-end specs, all passing.
+649 unit and integration tests plus 53 end-to-end specs, all passing.
 
 | Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `apps/api` unit        | 283   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
-| `apps/api` integration | 259   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
+| `apps/api` unit        | 334   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
+| `apps/api` integration | 278   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
 | `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### End-to-end coverage
 
-46 Playwright specs drive a real browser against a real API and database. They
+53 Playwright specs drive a real browser against a real API and database. They
 exist for what the faster suites structurally cannot check: that the pieces are
 wired to each other, and that the honesty rules the backend enforces survive to
 the screen — a null indicator rendered as `— needs 50` rather than `0`, an
@@ -187,8 +244,9 @@ crosshair, warm-up rendering, session and tradability verdicts, the scanner's
 matches and its unevaluable path, watchlist scoping, saved scans, building a
 nested strategy rule and reading it back in words, a manager who may author but
 not promote, an admin walking a version to live one rung at a time, a dry run
-accounting for every symbol it looked at, and the kill switch including the API
-refusing a manager's release.
+accounting for every symbol it looked at, a backtest that arrives with its
+modelling assumptions and its gross figure beside its net one, and the kill
+switch including the API refusing a manager's release.
 
 ## Blocked
 
@@ -275,8 +333,8 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 3 — Strategies. Complete.** Two carried items remain, both belonging to
-later phases:
+**Phase 4 — Backtesting. Complete.** Three carried items remain, all belonging
+to later phases:
 
 1. Schedule the calendar sync. Rows are generated on demand today; a deployment
    needs `MarketCalendarService.sync` run ahead of each period. The scheduler
@@ -284,8 +342,12 @@ later phases:
 2. Schedule strategy evaluation. `SignalService.evaluateAllLive` exists and is
    called by nothing on a timer; a live strategy is evaluated when someone asks
    for it. The scheduler arrives in Phase 7.
+3. Run backtests in the background. A run over a few thousand bars takes
+   milliseconds, so it happens inline and the row records what actually
+   happened; a window of years will need the queue that arrives with the
+   scheduler. The `QUEUED` status exists and is deliberately unused rather than
+   written by something that never dequeues.
 
-Phase 3's tests pass, so **Phase 4 — Backtesting** may begin: the historical
-data pipeline, the event-driven engine, performance metrics, walk-forward
-analysis, Monte Carlo, and parameter optimisation with overfitting warnings —
-with a look-ahead-bias suite as its exit criterion.
+Phase 4's tests pass, so **Phase 5 — Paper trading** may begin: the paper broker
+with modelled latency, partial fills, spread and slippage, portfolio accounting
+with time- and money-weighted returns, and the trade journal.

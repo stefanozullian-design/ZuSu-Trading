@@ -80,6 +80,14 @@ export interface IndicatorSeries {
   stochasticD: (Decimal | null)[];
 }
 
+/**
+ * The most rows a single ranged load will return.
+ *
+ * Hitting it means the window is too large to read in one pass, which callers
+ * are expected to surface rather than absorb.
+ */
+export const RANGE_ROW_CAP = 100_000;
+
 export class IndicatorService {
   constructor(private readonly db: PrismaClient) {}
 
@@ -95,6 +103,14 @@ export class IndicatorService {
     timeframe: Timeframe,
     options: { limit?: number; from?: Date; to?: Date } = {},
   ): Promise<ProviderCandle[]> {
+    // A range is an explicit request for those bars, so it is not silently
+    // trimmed to the newest few hundred — a backtest that asked for August
+    // and quietly received the last five days would report a claim about a
+    // window it never read. The cap is a guard against an unbounded query,
+    // and a caller that hits it is told rather than served a short window;
+    // `limit` still applies when the caller asked for the newest N bars.
+    const bounded = options.from !== undefined || options.to !== undefined;
+    const take = options.limit ?? (bounded ? RANGE_ROW_CAP : 500);
     const rows = await this.db.marketDataCandle.findMany({
       where: {
         symbol,
@@ -109,7 +125,7 @@ export class IndicatorService {
           : {}),
       },
       orderBy: { openTime: 'desc' },
-      take: options.limit ?? 500,
+      take,
     });
 
     return rows.reverse().map((row) => ({

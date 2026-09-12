@@ -13,6 +13,7 @@ import { IndicatorService } from './modules/market-data/indicator.service.js';
 import { MarketDataProviderRegistry } from './modules/market-data/provider-registry.js';
 import { MarketDataQualityService } from './modules/market-data/quality.service.js';
 import { ScanService } from './modules/market-data/scan.service.js';
+import { BacktestService } from './modules/backtest/backtest.service.js';
 import { SignalService } from './modules/strategies/signal.service.js';
 import { StrategyService } from './modules/strategies/strategy.service.js';
 import { WatchlistService } from './modules/market-data/watchlist.service.js';
@@ -44,6 +45,7 @@ export interface AppContainer {
   scans: ScanService;
   strategies: StrategyService;
   signals: SignalService;
+  backtests: BacktestService;
   dataQuality: MarketDataQualityService;
   killSwitch: KillSwitchService;
   gate: TradingGate;
@@ -69,6 +71,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const scans = new ScanService(db, indicators, watchlists);
   const strategies = new StrategyService(db);
   const signals = new SignalService(db, strategies, indicators, watchlists, calendar);
+  const backtests = new BacktestService(db, strategies, indicators, watchlists);
   const clients = new ClientService(db, access, audit);
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
@@ -92,6 +95,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     scans,
     strategies,
     signals,
+    backtests,
     dataQuality,
     killSwitch,
     gate,

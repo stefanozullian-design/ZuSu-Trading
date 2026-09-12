@@ -5,6 +5,7 @@ import {
   LogOut,
   Radar,
   ScrollText,
+  TestTubeDiagonal,
   Waypoints,
   Wifi,
   WifiOff,
@@ -21,6 +22,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { MarketPage } from '@/pages/MarketPage';
 import { ScannerPage } from '@/pages/ScannerPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
+import { BacktestPage } from '@/pages/BacktestPage';
 import { cn } from '@/lib/utils';
 import type { EnvironmentInfo } from '@/lib/types';
 
@@ -80,6 +82,13 @@ function Shell() {
                 label="Strategies"
               />
             )}
+            {can('backtest:read') && (
+              <NavItem
+                to="/backtests"
+                icon={<TestTubeDiagonal className="h-4 w-4" aria-hidden />}
+                label="Backtests"
+              />
+            )}
             {can('audit:read') && (
               <NavItem
                 to="/audit"
@@ -124,6 +133,10 @@ function Shell() {
         <Route
           path="/strategies"
           element={can('strategy:read') ? <StrategiesPage /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/backtests"
+          element={can('backtest:read') ? <BacktestPage /> : <Navigate to="/" />}
         />
         <Route path="/audit" element={can('audit:read') ? <AuditPage /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" replace />} />

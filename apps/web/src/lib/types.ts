@@ -369,3 +369,134 @@ export interface SignalRow {
   conditionSnapshot: Record<string, unknown>;
   createdAt: string;
 }
+
+export interface BacktestCaveats {
+  ambiguousExits: number;
+  gapThroughStop: number;
+  unknownVerdicts: number;
+  signalsNotTaken: number;
+  openAtEnd: number;
+  ratiosSuppressed: boolean;
+  ratiosInflatedByLowExposure: boolean;
+}
+
+export interface BacktestMetrics {
+  initialCapital: string;
+  finalEquity: string;
+  netProfit: string;
+  grossProfit: string;
+  feesPaid: string;
+  slippagePaid: string;
+  totalReturnPct: string;
+  cagrPct: string | null;
+  maxDrawdownPct: string;
+  maxDrawdownAmount: string;
+  maxDrawdownRecoveryBars: number | null;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  scratchCount: number;
+  winRatePct: string;
+  avgWin: string;
+  avgLoss: string;
+  profitFactor: string | null;
+  expectancy: string;
+  avgRMultiple: string | null;
+  payoffRatio: string | null;
+  sharpe: string | null;
+  sortino: string | null;
+  exposurePct: string;
+  avgBarsHeld: string;
+  longestWinStreak: number;
+  longestLossStreak: number;
+  caveats: BacktestCaveats;
+}
+
+export interface WalkForwardFold {
+  index: number;
+  inSampleFrom: string;
+  inSampleTo: string;
+  outOfSampleFrom: string;
+  outOfSampleTo: string;
+  inSampleReturnPct: string;
+  outOfSampleReturnPct: string;
+  inSampleTrades: number;
+  outOfSampleTrades: number;
+  degradationPct: string | null;
+}
+
+export interface WalkForwardResult {
+  folds: WalkForwardFold[];
+  meanOutOfSampleReturnPct: string | null;
+  profitableFolds: number;
+  comparableFolds: number;
+  verdict: string;
+}
+
+export interface MonteCarloResult {
+  iterations: number;
+  tradesResampled: number;
+  equityPercentiles: { p5: string; p25: string; p50: string; p75: string; p95: string };
+  drawdownPercentiles: { p50: string; p75: string; p95: string };
+  probabilityOfLossPct: string;
+  worstDrawdownPct: string;
+  verdict: string;
+}
+
+export interface BacktestParameters {
+  universe: string[];
+  barsLoaded: number;
+  windowUsed: { from: string; to: string } | null;
+  costs: {
+    commissionPerTrade: string;
+    commissionPerShare: string;
+    spreadFraction: string;
+    slippageFraction: string;
+  };
+  assumptions: string[];
+}
+
+export interface BacktestTradeRow {
+  symbol: string;
+  direction: string;
+  quantity: string;
+  entryTime: string;
+  entryPrice: string;
+  exitTime: string | null;
+  exitPrice: string | null;
+  grossPnl: string | null;
+  fees: string;
+  slippage: string;
+  netPnl: string | null;
+  rMultiple: string | null;
+  maeAmount: string | null;
+  mfeAmount: string | null;
+  exitReason: string | null;
+}
+
+export interface BacktestSummary {
+  id: string;
+  strategyId: string;
+  strategyVersionId: string;
+  strategyName: string;
+  version: number;
+  status: string;
+  timeframe: string;
+  startDate: string;
+  endDate: string;
+  initialCapital: string;
+  parameters: BacktestParameters;
+  metrics: BacktestMetrics | null;
+  walkForward: WalkForwardResult | null;
+  monteCarlo: MonteCarloResult | null;
+  equityCurve: { at: string; equity: string }[];
+  skips: { at: string; symbol: string; reason: string }[];
+  errorMessage: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  tradeCount: number;
+}
+
+export interface BacktestDetail extends BacktestSummary {
+  trades: BacktestTradeRow[];
+}

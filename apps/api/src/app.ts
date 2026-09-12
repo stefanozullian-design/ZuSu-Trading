@@ -13,6 +13,7 @@ import { buildContainer, type AppContainer } from './container.js';
 import { createLogger, loggerOptions } from './lib/logger.js';
 import { registerAuditRoutes } from './modules/audit/audit.routes.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
+import { registerBacktestRoutes } from './modules/backtest/backtest.routes.js';
 import { verifyAccessToken } from './modules/auth/tokens.js';
 import { registerBrokerRoutes } from './modules/broker/broker.routes.js';
 import { registerClientRoutes } from './modules/clients/client.routes.js';
@@ -106,6 +107,9 @@ export async function buildApp(options: { container?: AppContainer } = {}): Prom
   await app.register(async (api) => registerRiskRoutes(api, container), { prefix: '/api/risk' });
   await app.register(async (api) => registerStrategyRoutes(api, container), {
     prefix: '/api/strategies',
+  });
+  await app.register(async (api) => registerBacktestRoutes(api, container), {
+    prefix: '/api/backtests',
   });
   await app.register(async (api) => registerAuditRoutes(api, container), { prefix: '/api/audit' });
   await app.register(async (api) => registerSystemRoutes(api, container), {
