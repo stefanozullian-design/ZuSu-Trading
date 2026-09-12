@@ -15,8 +15,8 @@
     "db:reset": "prisma migrate reset --force",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:unit": "vitest run --dir src",
-    "test:integration": "vitest run --dir test/integration",
+    "test:unit": "vitest run src/",
+    "test:integration": "vitest run test/integration/",
     "test:watch": "vitest",
     "docs:openapi": "tsx scripts/generate-openapi.ts"
   },

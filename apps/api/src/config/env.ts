@@ -64,6 +64,26 @@ const envSchema = z.object({
   /** Deterministic seed for the demo market simulator. */
   DEMO_SEED: z.coerce.number().int().default(20260101),
 
+  /**
+   * Market data (Phase 2). Absent means no provider is configured: the health
+   * probe reports MARKET_DATA as DISABLED and the trading gate blocks new
+   * trades rather than falling back to the demo simulator.
+   */
+  MARKET_DATA_PROVIDER: z.enum(['NONE', 'MASSIVE']).default('NONE'),
+  MASSIVE_API_KEY: z.string().optional(),
+  /** Massive is the former Polygon.io; the legacy host still answers for now. */
+  MASSIVE_BASE_URL: z.string().url().default('https://api.massive.com'),
+  MASSIVE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+  /**
+   * Whether the Massive plan serves delayed data. Defaults to true: assuming a
+   * feed is real-time when it is not would let a stale price authorise an entry.
+   * Only Advanced and Business plans are real-time.
+   */
+  MASSIVE_IS_DELAYED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+
   ANTHROPIC_API_KEY: z.string().optional(),
 });
 
@@ -80,6 +100,7 @@ export const SECRET_ENV_KEYS = [
   'COOKIE_SECRET',
   'CREDENTIAL_ENCRYPTION_KEY',
   'ANTHROPIC_API_KEY',
+  'MASSIVE_API_KEY',
 ] as const;
 
 let cached: AppConfig | null = null;
@@ -102,6 +123,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
 
   if (config.isProduction && !config.COOKIE_SECURE) {
     throw new Error('COOKIE_SECURE cannot be false in production');
+  }
+  // A provider named but not credentialled is a misconfiguration, not a reason
+  // to run on silently with no data.
+  if (config.MARKET_DATA_PROVIDER === 'MASSIVE' && !config.MASSIVE_API_KEY) {
+    throw new Error('MARKET_DATA_PROVIDER=MASSIVE requires MASSIVE_API_KEY');
   }
   return config;
 }

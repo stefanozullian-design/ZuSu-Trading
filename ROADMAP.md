@@ -4,7 +4,8 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 1 complete.** See [BUILD_STATUS.md](./BUILD_STATUS.md).
+Current position: **Phase 2 started** (provider chosen, adapter built).
+See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
 
@@ -18,8 +19,8 @@ dashboard and audit logging. No live trading.
 Market-data provider adapter, market-data quality layer, market-calendar engine,
 indicator engine, watchlists, scanner, charts.
 
-**External dependency:** a market-data provider must be chosen and its rate limits,
-session semantics, historical depth and corporate-action feed confirmed.
+**External dependency:** resolved — the provider is Massive.com (the former
+Polygon.io). A key is still needed to verify the adapter against the live API.
 
 Exit criteria: quotes and candles flow from a real provider; stale, gapped,
 duplicated and impossible data is detected and blocks new trades; the calendar

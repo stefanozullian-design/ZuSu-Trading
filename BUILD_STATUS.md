@@ -1,10 +1,15 @@
 # Build status
 
-**Current phase: 1 — Foundation. Complete.**
+**Current phase: 2 — Market data. Started.**
 **Live trading: not possible.** No route in this API can create an order, and
 `ALLOW_LIVE_TRADING` defaults to false.
 
-Last updated: 2026-09-10
+**Market-data provider: Massive.com** (the former Polygon.io, rebranded
+2025-10-30). Chosen for full US-tape coverage, REST and WebSocket access, a real
+corporate-actions feed and documented per-tier rate limits. Deployment scope is
+single-user, so no data-redistribution licence is required.
+
+Last updated: 2026-09-12
 
 ---
 
@@ -27,28 +32,43 @@ Last updated: 2026-09-10
 | **API docs**             | OpenAPI generated from the same zod schemas the routes validate against (`docs/openapi.json`, Swagger UI at `/docs`)                                                                                                                                                      |
 | **Frontend**             | Login with MFA enrolment, dashboard (P&L, positions, risk monitor, kill switch, system health), audit view, mobile-specific layout, unmistakable environment banner                                                                                                       |
 | **Demo mode**            | Seed data: four users covering every role, a client, a $100,000 demo portfolio with positions and snapshot history, a watchlist, three preconfigured strategy definitions. No API credentials needed                                                                      |
-| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 153 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
+| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 186 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
 
 ### Test coverage
 
-153 tests, all passing.
+186 tests, all passing.
 
-| Suite                  | Tests | Covers                                                                                                                                                                                                        |
-| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                              |
-| `apps/api` unit        | 61    | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees) |
-| `apps/api` integration | 55    | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting                                 |
-| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                 |
+| Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                         |
+| `apps/api` unit        | 94    | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits) |
+| `apps/api` integration | 55    | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting                                                                                                                            |
+| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                            |
 
 ## In progress
 
-Nothing. Phase 1 is complete and Phase 2 has not started.
+### Phase 2 — Market data
+
+| Step                            | State                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Choose a provider            | Done — Massive.com. Free tier is end-of-day, Starter 15-minute delayed, real-time from Advanced. Options data needs Advanced.                                             |
+| 2. `MarketDataProvider` adapter | Done — interface, `MassiveProvider` and the provider registry, with 33 unit tests against a fake transport. Not yet exercised against the live API; no key is configured. |
+| 3. Data-quality layer           | Not started. Next.                                                                                                                                                        |
+| 4. Market-calendar engine       | Not started. See the `getCalendar` limitation below.                                                                                                                      |
+| 5. Indicator engine             | Not started.                                                                                                                                                              |
+| 6. Watchlists, scanner, charts  | Not started.                                                                                                                                                              |
+| 7. Playwright E2E suite         | Not started (scheduled for this phase).                                                                                                                                   |
+
+The adapter deliberately does not persist anything yet. Quotes and candles are
+returned as domain types; writing them to `market_data_quotes` and
+`market_data_candles` belongs with the quality layer, so that nothing reaches the
+database without having been checked first.
 
 ## Blocked
 
 | Item                            | Blocked on                                                                                                                                                                                                                                                                           |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Real market data (Phase 2)      | Choice of provider. The provider adapter, quality layer and calendar cannot be finished until a provider's rate limits, session semantics and corporate-action feed are confirmed.                                                                                                   |
+| Live verification of the feed   | A Massive.com API key. The adapter is tested against a fake transport only; its behaviour against the real API — pagination volume, actual rate-limit headers, entitlement errors — is unverified until a key exists.                                                                |
 | Live broker adapter (Phase 8)   | Confirmation of the broker's API capabilities — specifically whether it exposes client order IDs (needed for idempotency), execution-level fills (needed for partial fills and reconciliation), and defined-risk multi-leg option orders. Nothing about the venue should be assumed. |
 | Options trading (Phase 8+)      | The same broker confirmation, plus greeks and open-interest availability.                                                                                                                                                                                                            |
 | Notification delivery (Phase 6) | Choice of email/SMS/push providers.                                                                                                                                                                                                                                                  |
@@ -95,19 +115,21 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 2 — Market data.** In order:
+**Phase 2 — Market data.** Steps 1 and 2 are done; continue in order:
 
-1. Choose a market-data provider and confirm its rate limits, session semantics,
-   historical depth and corporate-action feed.
-2. Build the provider adapter behind a `MarketDataProvider` interface, mirroring
-   how `BrokerAdapter` isolates the venue.
 3. Build the market-data quality layer (staleness, gaps, impossible spreads,
    abnormal jumps, duplicates) and wire its verdict into `TradingGate` so failing
-   data blocks new trades.
+   data blocks new trades. This layer owns persistence: nothing reaches
+   `market_data_quotes` or `market_data_candles` unchecked.
 4. Build the market-calendar engine (regular/pre/after hours, holidays, early
    closes, halts, per-symbol availability, crypto 24/7) and replace the demo
-   simulator's approximate session logic with it.
-5. Build the indicator engine, computing locally rather than calling out.
-6. Build watchlists, the scanner and charting.
+   simulator's approximate session logic with it. Massive only reports upcoming
+   holidays, so historical sessions need a second source or derivation from
+   daily aggregates — see `MassiveProvider.getCalendar`.
+5. Point `HealthService.checkMarketData` at the provider registry, so a
+   configured feed is probed live instead of reporting `DISABLED`.
+6. Build the indicator engine, computing locally rather than calling out.
+7. Build watchlists, the scanner and charting.
+8. Commit the Playwright end-to-end suite.
 
 Do not start Phase 3 until Phase 2's tests pass.
