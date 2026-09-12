@@ -4,6 +4,7 @@ import { config } from '../../config/env.js';
 import { CircuitBreaker } from '../../lib/circuit-breaker.js';
 import { pingRedis } from '../../lib/redis.js';
 import { DemoBroker } from '../broker/demo-broker.js';
+import type { MarketDataProviderRegistry } from '../market-data/provider-registry.js';
 
 export interface ServiceProbe {
   service: ServiceName;
@@ -33,6 +34,7 @@ export class HealthService {
   constructor(
     private readonly db: PrismaClient,
     private readonly ws?: WebSocketStatusProvider,
+    private readonly marketData?: MarketDataProviderRegistry,
   ) {}
 
   private breaker(service: ServiceName): CircuitBreaker {
@@ -165,12 +167,28 @@ export class HealthService {
   }
 
   private async checkMarketData(environment: TradingEnvironment): Promise<ServiceProbe> {
+    // A configured provider is probed live, whatever the environment: a DEMO
+    // deployment with a real feed should still be told when that feed is down.
+    const provider = this.marketData?.tryResolve() ?? null;
+    if (provider) {
+      const health = await provider.healthCheck();
+      const detail = [provider.name, health.detail].filter(Boolean).join(': ');
+      return this.probe(
+        ServiceName.MARKET_DATA,
+        health.ok ? ServiceStatus.HEALTHY : ServiceStatus.DOWN,
+        health.latencyMs,
+        health.rateLimitRemaining === null
+          ? detail
+          : `${detail} (${health.rateLimitRemaining} requests left)`,
+      );
+    }
+
     if (environment !== TradingEnvironment.DEMO) {
       return this.probe(
         ServiceName.MARKET_DATA,
         ServiceStatus.DISABLED,
         null,
-        'No real market-data provider is configured; the provider adapter arrives in Phase 2',
+        'No market-data provider is configured. Set MARKET_DATA_PROVIDER and its credentials.',
       );
     }
     const started = Date.now();

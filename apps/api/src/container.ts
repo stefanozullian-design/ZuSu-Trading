@@ -7,6 +7,8 @@ import { AuthService } from './modules/auth/auth.service.js';
 import { BrokerRegistry } from './modules/broker/broker-registry.js';
 import { ClientService } from './modules/clients/client.service.js';
 import { HealthService } from './modules/health/health.service.js';
+import { MarketDataProviderRegistry } from './modules/market-data/provider-registry.js';
+import { MarketDataQualityService } from './modules/market-data/quality.service.js';
 import { PortfolioService } from './modules/portfolios/portfolio.service.js';
 import { AccessControl } from './modules/rbac/access-control.js';
 import { KillSwitchService } from './modules/risk/kill-switch.service.js';
@@ -27,6 +29,8 @@ export interface AppContainer {
   portfolios: PortfolioService;
   brokers: BrokerRegistry;
   health: HealthService;
+  marketData: MarketDataProviderRegistry;
+  dataQuality: MarketDataQualityService;
   killSwitch: KillSwitchService;
   gate: TradingGate;
   ws: WebSocketGateway;
@@ -41,11 +45,13 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const auth = new AuthService(db, audit);
   const brokers = new BrokerRegistry({ seed: config().DEMO_SEED });
   const ws = new WebSocketGateway(logger);
-  const health = new HealthService(db, ws);
+  const marketData = new MarketDataProviderRegistry();
+  const health = new HealthService(db, ws, marketData);
+  const dataQuality = new MarketDataQualityService(db);
   const clients = new ClientService(db, access, audit);
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
-  const gate = new TradingGate(db, brokers, health);
+  const gate = new TradingGate(db, brokers, health, dataQuality);
 
   return {
     db,
@@ -57,6 +63,8 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     portfolios,
     brokers,
     health,
+    marketData,
+    dataQuality,
     killSwitch,
     gate,
     ws,

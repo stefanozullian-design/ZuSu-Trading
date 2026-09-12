@@ -4,6 +4,7 @@ import { config } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { HealthService } from '../health/health.service.js';
+import type { MarketDataQualityService } from '../market-data/quality.service.js';
 
 export type BlockerSeverity = 'BLOCKING' | 'WARNING';
 
@@ -36,9 +37,15 @@ export class TradingGate {
     private readonly db: PrismaClient,
     private readonly registry: BrokerRegistry,
     private readonly health: HealthService,
+    private readonly quality: MarketDataQualityService,
   ) {}
 
-  async evaluate(portfolio: Portfolio): Promise<GateDecision> {
+  /**
+   * @param symbol When given, open blocking data-quality events for that symbol
+   *   are blocking. Without it only feed-wide faults block, because one
+   *   impossible symbol should not halt an entire portfolio.
+   */
+  async evaluate(portfolio: Portfolio, symbol?: string): Promise<GateDecision> {
     const blockers: GateBlocker[] = [];
     const environment = portfolio.environment as TradingEnvironment;
 
@@ -110,6 +117,37 @@ export class TradingGate {
       }
     }
 
+    // Market-data quality (§6). A feed the platform knows to be wrong is not a
+    // degraded convenience; it is a reason not to trade. Demo portfolios are
+    // exempt because they are priced by the simulator, not by the provider.
+    if (environment !== TradingEnvironment.DEMO) {
+      const verdict = await this.quality.verdict();
+      for (const event of verdict.feedWide) {
+        blockers.push({
+          code: `MARKET_DATA_${event.issue}`,
+          message: `Market data is unusable: ${event.detail}`,
+          severity: 'BLOCKING',
+        });
+      }
+      if (symbol) {
+        for (const event of verdict.bySymbol.filter((e) => e.symbol === symbol)) {
+          blockers.push({
+            code: `MARKET_DATA_${event.issue}`,
+            message: `Market data for ${symbol} is unusable: ${event.detail}`,
+            severity: 'BLOCKING',
+          });
+        }
+      } else if (verdict.bySymbol.length > 0) {
+        blockers.push({
+          code: 'MARKET_DATA_SYMBOL_ISSUES',
+          message:
+            `${verdict.bySymbol.length} symbol(s) have unusable market data. ` +
+            'Orders in those symbols will be refused.',
+          severity: 'WARNING',
+        });
+      }
+    }
+
     return {
       portfolioId: portfolio.id,
       allowed: !blockers.some((b) => b.severity === 'BLOCKING'),
@@ -119,11 +157,11 @@ export class TradingGate {
   }
 
   /** Throws with the first blocking reason. Never silently permits (§84 Rule 4). */
-  async assertCanTrade(portfolioId: string): Promise<GateDecision> {
+  async assertCanTrade(portfolioId: string, symbol?: string): Promise<GateDecision> {
     const portfolio = await this.db.portfolio.findUnique({ where: { id: portfolioId } });
     if (!portfolio) throw new AppError('NOT_FOUND', 'Portfolio not found');
 
-    const decision = await this.evaluate(portfolio);
+    const decision = await this.evaluate(portfolio, symbol);
     if (!decision.allowed) {
       const blocking = decision.blockers.find((b) => b.severity === 'BLOCKING');
       throw new AppError(
