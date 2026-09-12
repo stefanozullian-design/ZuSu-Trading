@@ -32,18 +32,18 @@ Last updated: 2026-09-12
 | **API docs**             | OpenAPI generated from the same zod schemas the routes validate against (`docs/openapi.json`, Swagger UI at `/docs`)                                                                                                                                                      |
 | **Frontend**             | Login with MFA enrolment, dashboard (P&L, positions, risk monitor, kill switch, system health), audit view, mobile-specific layout, unmistakable environment banner                                                                                                       |
 | **Demo mode**            | Seed data: four users covering every role, a client, a $100,000 demo portfolio with positions and snapshot history, a watchlist, three preconfigured strategy definitions. No API credentials needed                                                                      |
-| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 326 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
+| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 403 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
 
 ### Test coverage
 
-326 tests, all passing.
+403 tests, all passing.
 
-| Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                  |
-| `apps/api` unit        | 172   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion |
-| `apps/api` integration | 117   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync and per-symbol tradability                                                                                                                          |
-| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                     |
+| Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `apps/api` unit        | 236   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator |
+| `apps/api` integration | 130   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting                                                                                                                                                                   |
+| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## In progress
 
@@ -71,6 +71,17 @@ Blocking verdicts reach `TradingGate`, which distinguishes a feed-wide fault (a
 dead provider blocks every non-DEMO portfolio) from a per-symbol fault (a warning
 on the portfolio, blocking only for an order naming that symbol). DEMO
 portfolios are exempt: the simulator prices them, not the provider.
+
+`indicators.ts` computes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP, the
+stochastic oscillator and OBV locally in decimal, never fetched from a provider.
+Three invariants the tests check rather than assume: results are aligned 1:1
+with their input, warm-up is null rather than zero, and `result[i]` depends only
+on inputs at or before `i`. That last one has a proof per indicator — computing
+over every prefix must agree with computing over the whole series and
+truncating — because an indicator that peeks one bar ahead turns a losing
+strategy into a spectacular backtest and a disaster in production. Indicator
+values are not persisted: they are a pure function of the candles, so storing
+them would create a second source of truth to keep in step for no benefit.
 
 `MarketCalendarService` answers "is this symbol tradable right now" and the gate
 now asks it whenever an order names a symbol. `TradingGate.evaluate` and
@@ -130,7 +141,14 @@ These are deliberate and documented, not oversights:
     unique index — but nothing populates it automatically. Massive's REST
     surface exposes no halt feed; that needs its WebSocket status channel,
     which is not built.
-12. **The jump reference is per-process and in-memory.** It is a within-session
+12. **VWAP's default session anchor is the UTC date.** Right for crypto, wrong
+    at the edges for US equities, whose session spans midnight UTC in the
+    extended hours. `vwap` takes a session predicate for that reason; pass the
+    calendar's view when it matters. Nothing wires them together automatically
+    yet.
+13. **ADX is not implemented.** Wilder's smoothing helper is shared and ready
+    for it, but directional movement is not built. Nothing depends on it.
+14. **The jump reference is per-process and in-memory.** It is a within-session
     comparison, and reading it back from the database could reintroduce the very
     price about to be rejected. It resets on restart, so the first quote for a
     symbol after a restart is never judged for an abnormal jump.
@@ -148,10 +166,9 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 2 — Market data.** Steps 1-4, the health probe and the simulator
+**Phase 2 — Market data.** Steps 1-5, the health probe and the simulator
 replacement are done; continue in order:
 
-5. Build the indicator engine, computing locally rather than calling out.
 6. Build watchlists, the scanner and charting.
 7. Commit the Playwright end-to-end suite.
 8. Schedule the calendar sync. Rows are generated on demand today; a deployment

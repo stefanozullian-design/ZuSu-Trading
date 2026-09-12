@@ -8,6 +8,7 @@ import { BrokerRegistry } from './modules/broker/broker-registry.js';
 import { ClientService } from './modules/clients/client.service.js';
 import { HealthService } from './modules/health/health.service.js';
 import { MarketCalendarService } from './modules/market-data/calendar.service.js';
+import { IndicatorService } from './modules/market-data/indicator.service.js';
 import { MarketDataProviderRegistry } from './modules/market-data/provider-registry.js';
 import { MarketDataQualityService } from './modules/market-data/quality.service.js';
 import { PortfolioService } from './modules/portfolios/portfolio.service.js';
@@ -32,6 +33,7 @@ export interface AppContainer {
   health: HealthService;
   marketData: MarketDataProviderRegistry;
   calendar: MarketCalendarService;
+  indicators: IndicatorService;
   dataQuality: MarketDataQualityService;
   killSwitch: KillSwitchService;
   gate: TradingGate;
@@ -51,6 +53,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const health = new HealthService(db, ws, marketData);
   const dataQuality = new MarketDataQualityService(db);
   const calendar = new MarketCalendarService(db);
+  const indicators = new IndicatorService(db);
   const clients = new ClientService(db, access, audit);
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
@@ -68,6 +71,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     health,
     marketData,
     calendar,
+    indicators,
     dataQuality,
     killSwitch,
     gate,
