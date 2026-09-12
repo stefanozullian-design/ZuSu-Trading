@@ -31,13 +31,17 @@ afterAll(async () => {
 });
 
 describe('kill switch', () => {
-  it('permits trading before it is engaged', async () => {
+  it('is not what blocks the gate before it is engaged', async () => {
     const gate = await harness.app.inject({
       method: 'GET',
       url: `/api/risk/portfolios/${portfolioId}/gate`,
       headers: { cookie: session.cookies },
     });
-    expect(gate.json().allowed).toBe(true);
+    // Not `allowed === true`: the gate also refuses a closed market, so this
+    // suite would otherwise pass on a Tuesday and fail on a Saturday. What the
+    // kill switch owes is that *it* is not the thing refusing.
+    const codes = (gate.json().blockers as { code: string }[]).map((b) => b.code);
+    expect(codes).not.toContain('TRADING_HALTED');
   });
 
   it('halts a single portfolio and blocks the gate with a readable reason', async () => {
@@ -62,8 +66,10 @@ describe('kill switch', () => {
     });
     const decision = gate.json();
     expect(decision.allowed).toBe(false);
-    expect(decision.blockers[0].code).toBe('TRADING_HALTED');
-    expect(decision.blockers[0].message).toContain('quote feed looks wrong');
+    const halted = (decision.blockers as { code: string; message: string }[]).find(
+      (blocker) => blocker.code === 'TRADING_HALTED',
+    );
+    expect(halted?.message).toContain('quote feed looks wrong');
 
     // The other portfolio is untouched.
     const other = await db.portfolio.findUniqueOrThrow({ where: { id: secondPortfolioId } });

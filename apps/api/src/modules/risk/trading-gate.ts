@@ -10,6 +10,7 @@ import { config } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { HealthService } from '../health/health.service.js';
+import { isTradableSession } from '../market-data/calendar.js';
 import type { MarketCalendarService } from '../market-data/calendar.service.js';
 import type { MarketDataQualityService } from '../market-data/quality.service.js';
 
@@ -39,6 +40,17 @@ export interface GateDecision {
  * Portfolio-level limits (daily loss, exposure, correlation, …) are the risk
  * engine's job and are deliberately not duplicated here.
  */
+/**
+ * The venue a portfolio-level question is asked about.
+ *
+ * A portfolio does not declare a market, and its symbols may span several. An
+ * order that names a symbol is always checked against that symbol's own
+ * market; this constant only answers the broader "may this portfolio trade at
+ * all right now", for which the US equity session is the honest default on a
+ * platform that trades US equities.
+ */
+const PRIMARY_MARKET = 'XNYS';
+
 export class TradingGate {
   constructor(
     private readonly db: PrismaClient,
@@ -166,16 +178,41 @@ export class TradingGate {
       }
     }
 
-    // Tradability of the specific symbol (§7): market closed, holiday, halt, or
-    // an instrument that is not tradable at all. Only checkable when the order
-    // names a symbol, and DEMO is priced by the simulator, which has its own
-    // session logic.
-    if (symbol && environment !== TradingEnvironment.DEMO) {
+    // Is the market open, and is this symbol tradable in it (§7)?
+    //
+    // DEMO used to be exempt here, on the grounds that the simulator owns its
+    // own session logic. That was wrong twice over. It is not even true — the
+    // simulator and the calendar both derive their sessions from the same
+    // `sessionAt` and the same NYSE definition, so they cannot disagree. And
+    // the exemption produced the worst possible outcome for a person: the
+    // market page said "AAPL cannot be traded now, XNYS is closed" while the
+    // trading page accepted the approval and the venue then quietly declined
+    // to fill it. Two screens disagreeing about the same fact is precisely
+    // what this platform is built not to do.
+    //
+    // The check runs whether or not the order names a symbol. Without one it
+    // asks about the venue this platform trades, because "can this portfolio
+    // trade right now" is a question the dashboard asks constantly and a
+    // portfolio-level answer of "permitted" on a Saturday is a lie.
+    if (symbol) {
       const verdict = await this.calendar.isTradable(symbol, at);
       if (!verdict.tradable) {
         blockers.push({
           code: verdict.session === MarketSession.HALTED ? 'SYMBOL_HALTED' : 'MARKET_CLOSED',
           message: verdict.reason ?? `${symbol} cannot be traded right now.`,
+          severity: 'BLOCKING',
+        });
+      }
+    } else {
+      const session = await this.calendar.sessionFor(PRIMARY_MARKET, at);
+      if (!isTradableSession(session)) {
+        const nextOpen = await this.calendar.nextOpen(PRIMARY_MARKET, at);
+        blockers.push({
+          code: 'MARKET_CLOSED',
+          message:
+            `${PRIMARY_MARKET} is closed` +
+            (nextOpen ? `, and opens next at ${nextOpen.toISOString()}` : '') +
+            '. An order named for a symbol is checked against that symbol’s own market.',
           severity: 'BLOCKING',
         });
       }

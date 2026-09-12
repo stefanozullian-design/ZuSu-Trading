@@ -139,6 +139,28 @@ test.describe('the approval queue', () => {
   });
 });
 
+test.describe('the market being shut', () => {
+  test('says so before anyone clicks, rather than after', async ({ page }) => {
+    await signIn(page, 'manager');
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
+    await expect(page.getByText(/recommendations awaiting a decision/i)).toBeVisible();
+
+    // The gate is consulted whether or not the market happens to be open while
+    // this runs, so both outcomes are legitimate — what must never happen is a
+    // page that stays silent and lets the refusal arrive after the click.
+    const banner = page.getByText('Nothing can be submitted right now');
+    if (await banner.isVisible()) {
+      await expect(page.getByText(/is closed|halted|deactivated/i).first()).toBeVisible();
+      await expect(
+        page.getByText(/Approving one now would be refused by the same check/i),
+      ).toBeVisible();
+    } else {
+      // Open market: the approval controls are the ones that must be present.
+      await expect(page.getByRole('button', { name: /^Approve$/ }).first()).toBeVisible();
+    }
+  });
+});
+
 test.describe('performance', () => {
   test('shows both return measures and the conventions behind them', async ({ page }) => {
     await signIn(page, 'manager');

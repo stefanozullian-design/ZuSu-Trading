@@ -231,6 +231,34 @@ describe('isTradable', () => {
     expect(verdict.reason).toContain('XNYS is closed');
   });
 
+  it('says when the market next opens, so a refusal is actionable', async () => {
+    await instrument('AAPL');
+    // 03:00 UTC on the 15th: overnight, and the 15th's own session is ahead.
+    const verdict = await calendar.isTradable('AAPL', utc('2026-07-15T03:00:00Z'));
+
+    expect(verdict.nextOpen?.toISOString()).toBe('2026-07-15T13:30:00.000Z');
+    expect(verdict.reason).toContain('opens next at 2026-07-15T13:30:00.000Z');
+  });
+
+  it('offers no next open it cannot read from the calendar', async () => {
+    await instrument('AAPL');
+    // Past the end of the synced window: the honest answer is silence rather
+    // than a schedule projected forward through an unknown holiday.
+    const verdict = await calendar.isTradable('AAPL', utc('2026-07-19T03:00:00Z'));
+    expect(verdict.tradable).toBe(false);
+    expect(verdict.nextOpen).toBeNull();
+    expect(verdict.reason).not.toContain('opens next');
+  });
+
+  it('offers no next open for a halt, because the clock is not the problem', async () => {
+    await instrument('AAPL');
+    await calendar.recordHalt('AAPL', { reason: 'NEWS_PENDING', source: 'test' });
+    const verdict = await calendar.isTradable('AAPL', utc('2026-07-15T15:00:00Z'));
+
+    expect(verdict.session).toBe(MarketSession.HALTED);
+    expect(verdict.nextOpen).toBeNull();
+  });
+
   it('names the holiday when there is one', async () => {
     await instrument('AAPL');
     await calendar.sync(

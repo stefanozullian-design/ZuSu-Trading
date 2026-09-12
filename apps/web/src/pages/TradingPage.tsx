@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Brain, Check, RefreshCw, ShieldQuestion, X } from 'lucide-react';
+import { Bell, Brain, Check, Clock, RefreshCw, ShieldQuestion, X } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import type {
   AnalysisRow,
   AnalysisSpend,
+  GateDecision,
   NotificationRow,
   OrderRow,
   PortfolioSummary,
@@ -176,6 +177,8 @@ export function TradingPage() {
           ))}
         </select>
       </div>
+
+      <GateBanner portfolioId={id} />
 
       {error && (
         <p className="rounded-md border border-red-500/30 bg-red-500/5 p-2 text-xs text-red-400">
@@ -578,5 +581,42 @@ function SpendCard({ spend }: { spend: AnalysisSpend }) {
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Whether this portfolio can trade at all, stated before anyone clicks.
+ *
+ * The same decision the order manager enforces, read from the same endpoint.
+ * Learning that the market is shut from a refusal *after* approving is the
+ * kind of thing that makes people distrust a tool: the answer was knowable
+ * the whole time, so it belongs at the top of the page.
+ */
+function GateBanner({ portfolioId }: { portfolioId: string }) {
+  const { data: gate } = useQuery({
+    queryKey: ['gate', portfolioId],
+    queryFn: () => api<GateDecision>(`/api/risk/portfolios/${portfolioId}/gate`),
+    enabled: Boolean(portfolioId),
+    refetchInterval: 60_000,
+  });
+
+  if (!gate || gate.allowed) return null;
+
+  return (
+    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-300">
+      <p className="flex items-center gap-1.5 font-medium">
+        <Clock className="h-3.5 w-3.5" aria-hidden />
+        Nothing can be submitted right now
+      </p>
+      <ul className="mt-1 space-y-0.5 text-[11px]">
+        {gate.blockers.map((blocker) => (
+          <li key={blocker.code + blocker.message}>· {blocker.message}</li>
+        ))}
+      </ul>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        The recommendations below stay where they are. Approving one now would be refused by the
+        same check, so the refusal is shown here instead of after the click.
+      </p>
+    </div>
   );
 }

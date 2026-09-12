@@ -36,6 +36,13 @@ export interface TradabilityVerdict {
   marketCode: string;
   /** Human-readable reason when not tradable. Null when it is. */
   reason: string | null;
+  /**
+   * When the market next opens, if it is currently shut and the calendar
+   * reaches that far. Null when it is open, when the reason has nothing to do
+   * with the clock (a halt, an untradable instrument), or when no synced day
+   * answers the question — in which case saying nothing beats guessing.
+   */
+  nextOpen: Date | null;
 }
 
 export interface SyncSummary {
@@ -138,6 +145,27 @@ export class MarketCalendarService {
   }
 
   /**
+   * The next instant this market opens, or null if no synced day says.
+   *
+   * Deliberately bounded: it reads the calendar rows that exist rather than
+   * projecting a schedule forward. A calendar synced only to Friday cannot
+   * honestly tell you about Monday, and inventing the answer is how a system
+   * ends up promising an open that a holiday cancels.
+   */
+  async nextOpen(marketCode: string, at: Date = new Date()): Promise<Date | null> {
+    const day = await this.db.marketCalendarDay.findFirst({
+      where: {
+        marketCode,
+        isTradingDay: true,
+        regularOpen: { gt: at },
+      },
+      orderBy: { regularOpen: 'asc' },
+      select: { regularOpen: true },
+    });
+    return day?.regularOpen ?? null;
+  }
+
+  /**
    * Whether one symbol may be traded at `at`, and why not when it may not.
    *
    * Four independent reasons a symbol is untradable, checked in order of
@@ -156,6 +184,7 @@ export class MarketCalendarService {
         session: MarketSession.CLOSED,
         marketCode: 'UNKNOWN',
         reason: `${symbol} is not a known instrument.`,
+        nextOpen: null,
       };
     }
 
@@ -167,6 +196,7 @@ export class MarketCalendarService {
         session: MarketSession.CLOSED,
         marketCode,
         reason: `${symbol} is not tradable on this platform.`,
+        nextOpen: null,
       };
     }
 
@@ -182,26 +212,32 @@ export class MarketCalendarService {
         session: MarketSession.HALTED,
         marketCode,
         reason: `${symbol} is halted (${halt.reason})${halt.detail ? `: ${halt.detail}` : ''}.`,
+        // A halt is not a clock problem, so the next open answers nothing.
+        nextOpen: null,
       };
     }
 
     const session = await this.sessionFor(marketCode, at);
     if (!isTradableSession(session)) {
-      const day = await this.dayFor(marketCode, at);
+      const [day, nextOpen] = await Promise.all([
+        this.dayFor(marketCode, at),
+        this.nextOpen(marketCode, at),
+      ]);
       return {
         tradable: false,
         session,
         marketCode,
         reason: day
-          ? day.holidayName
-            ? `${marketCode} is closed for ${day.holidayName}.`
-            : `${marketCode} is closed at ${at.toISOString()}.`
+          ? `${marketCode} is closed${day.holidayName ? ` for ${day.holidayName}` : ''}${
+              nextOpen ? `, and opens next at ${nextOpen.toISOString()}` : ''
+            }.`
           : `No calendar is loaded for ${marketCode} on ${at.toISOString()}. ` +
             'Sync the calendar before trading.',
+        nextOpen,
       };
     }
 
-    return { tradable: true, session, marketCode, reason: null };
+    return { tradable: true, session, marketCode, reason: null, nextOpen: null };
   }
 
   /** Records a halt. Re-halting an already-halted symbol is a no-op. */

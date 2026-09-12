@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { PrismaClient } from '@prisma/client';
 import { rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -44,7 +45,54 @@ function run(command: string, args: string[]): void {
   execFileSync(command, args, { cwd: repoRoot, env, stdio: 'inherit' });
 }
 
-export default function globalSetup(): void {
+/**
+ * Marks the instant this run starts as an open session on XNYS.
+ *
+ * The trading gate refuses a closed market, which is correct and is tested
+ * directly. But a browser suite that can only exercise the approval journey
+ * between 09:30 and 16:00 on a weekday is a suite that mostly does not run —
+ * and "the human gate works" is the single most important thing here to keep
+ * covered. So the fixture opens the session, explicitly and only in the E2E
+ * database, rather than the gate pretending Saturday is Tuesday.
+ */
+async function openTheSessionForThisRun(): Promise<void> {
+  const db = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+  try {
+    const now = new Date();
+    const date = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+    );
+    const open = new Date(date.getTime());
+    const close = new Date(date.getTime() + 86_400_000 - 1);
+
+    for (const marketCode of ['XNYS', 'CRYPTO']) {
+      await db.marketCalendarDay.upsert({
+        where: { marketCode_date: { marketCode, date } },
+        update: {
+          isTradingDay: true,
+          preMarketOpen: open,
+          regularOpen: open,
+          regularClose: close,
+          afterHoursClose: close,
+          holidayName: null,
+        },
+        create: {
+          marketCode,
+          date,
+          isTradingDay: true,
+          preMarketOpen: open,
+          regularOpen: open,
+          regularClose: close,
+          afterHoursClose: close,
+        },
+      });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export default async function globalSetup(): Promise<void> {
   // The administrator's MFA secret belongs to the database that issued it.
   // Reseeding invalidates it, and a stale note would send the next admin
   // sign-in into a loop of rejected codes.
@@ -55,4 +103,7 @@ export default function globalSetup(): void {
   run('npx', ['--workspace', '@zusu/api', 'prisma', 'migrate', 'reset', '--force', '--skip-seed']);
   run('npm', ['run', 'seed']);
   run('npm', ['run', 'backfill:demo']);
+
+  // Last, so the backfill's own calendar sync cannot overwrite it.
+  await openTheSessionForThisRun();
 }

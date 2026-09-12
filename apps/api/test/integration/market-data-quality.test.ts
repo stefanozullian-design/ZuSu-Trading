@@ -379,3 +379,73 @@ describe('trading gate integration', () => {
     expect(decision.blockers.some((b) => b.code.startsWith('MARKET_DATA_'))).toBe(false);
   });
 });
+
+/**
+ * The market being shut (the DEMO exemption, removed).
+ *
+ * DEMO used to skip this check on the grounds that the simulator owned its own
+ * session logic. It does not: the simulator and the calendar both derive their
+ * session from the same `sessionAt` over the same NYSE definition. What the
+ * exemption actually produced was two screens disagreeing — the market page
+ * saying the symbol could not be traded while the trading page took the
+ * approval and the venue then declined to fill it.
+ */
+describe('a closed market blocks every environment', () => {
+  const OVERNIGHT = new Date('2026-07-15T03:00:00.000Z');
+  const DURING_SESSION = new Date('2026-07-15T15:00:00.000Z');
+  let calendar: MarketCalendarService;
+
+  function gateFor() {
+    return new TradingGate(db, new BrokerRegistry(), new HealthService(db), quality, calendar);
+  }
+
+  beforeEach(async () => {
+    calendar = new MarketCalendarService(db);
+    await calendar.sync(
+      'XNYS',
+      new Date('2026-07-13T00:00:00.000Z'),
+      new Date('2026-07-19T00:00:00.000Z'),
+    );
+    await seedInstrument();
+  });
+
+  it('blocks a DEMO portfolio overnight, and names when it reopens', async () => {
+    const portfolio = await createPortfolio(db, { name: 'Demo', environment: 'DEMO' });
+
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'AAPL', at: OVERNIGHT });
+    const blocker = decision.blockers.find((b) => b.code === 'MARKET_CLOSED');
+
+    expect(decision.allowed).toBe(false);
+    expect(blocker?.message).toContain('XNYS is closed');
+    // Actionable, not just a refusal.
+    expect(blocker?.message).toContain('opens next at 2026-07-15T13:30:00.000Z');
+  });
+
+  it('permits the same DEMO portfolio inside the session', async () => {
+    const portfolio = await createPortfolio(db, { name: 'Demo', environment: 'DEMO' });
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'AAPL', at: DURING_SESSION });
+    expect(decision.blockers.some((b) => b.code === 'MARKET_CLOSED')).toBe(false);
+  });
+
+  it('answers the portfolio-level question too, with no symbol named', async () => {
+    // This is the call the dashboard makes on every refresh. It used to skip
+    // the session entirely and report "trading permitted" on a Saturday.
+    const portfolio = await createPortfolio(db, { name: 'Demo', environment: 'DEMO' });
+
+    const closed = await gateFor().evaluate(portfolio, { at: OVERNIGHT });
+    expect(closed.blockers.some((b) => b.code === 'MARKET_CLOSED')).toBe(true);
+
+    const open = await gateFor().evaluate(portfolio, { at: DURING_SESSION });
+    expect(open.blockers.some((b) => b.code === 'MARKET_CLOSED')).toBe(false);
+  });
+
+  it('distinguishes a halt from a closed market', async () => {
+    const portfolio = await createPortfolio(db, { name: 'Demo', environment: 'DEMO' });
+    await calendar.recordHalt('AAPL', { reason: 'NEWS_PENDING', source: 'test' });
+
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'AAPL', at: DURING_SESSION });
+    // A caller that conflated the two would retry at the open and be wrong.
+    expect(decision.blockers.some((b) => b.code === 'SYMBOL_HALTED')).toBe(true);
+    expect(decision.blockers.some((b) => b.code === 'MARKET_CLOSED')).toBe(false);
+  });
+});
