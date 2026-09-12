@@ -326,7 +326,11 @@ export class PaperBroker implements BrokerAdapter {
 
   getOptionsChain(): Promise<OptionsChain> {
     return Promise.reject(
-      new BrokerError('The paper venue does not price options; that arrives with Phase 8', false),
+      new BrokerError(
+        'The paper venue does not price options. The live adapter builds defined-risk ' +
+          'multi-leg orders; simulating their fills honestly is not something this venue does.',
+        false,
+      ),
     );
   }
 

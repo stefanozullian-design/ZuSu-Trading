@@ -195,6 +195,21 @@ async function seedPortfolio(clientId: string, adminId: string) {
     data: { clientId, portfolioId: portfolio.id, isPrimary: true },
   });
 
+  // The simulated venue is a broker, so the demo portfolio has a broker account
+  // like any other. Without one there is nowhere to store a reconciliation, and
+  // the system-health panel would report "never run" straight after someone had
+  // run one — two screens disagreeing about the same fact.
+  await db.brokerAccount.create({
+    data: {
+      portfolioId: portfolio.id,
+      environment: 'DEMO',
+      broker: 'DEMO',
+      label: 'Simulated venue',
+      connectionState: 'CONNECTED',
+      lastConnectedAt: new Date(),
+    },
+  });
+
   await db.riskLimit.create({
     data: {
       portfolioId: portfolio.id,

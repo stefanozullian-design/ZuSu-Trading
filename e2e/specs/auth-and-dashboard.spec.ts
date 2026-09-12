@@ -59,6 +59,15 @@ test.describe('the dashboard', () => {
     await expect(page.getByText(/no ANTHROPIC_API_KEY/i)).toBeVisible();
   });
 
+  test('states plainly whether anything trades on its own', async ({ page }) => {
+    // The one number on the dashboard worth being unambiguous about, and it is
+    // read from the live configurations rather than asserted in prose.
+    await expect(page.getByRole('heading', { name: 'Automation', exact: true })).toBeVisible();
+    await expect(
+      page.getByText(/Nothing trades on its own|place orders without a click/),
+    ).toBeVisible();
+  });
+
   test('says why the approvals panel is empty rather than showing an empty table', async ({
     page,
   }) => {

@@ -82,9 +82,9 @@ export class PerformanceService {
    * Writes the snapshot for one instant.
    *
    * Idempotent on (portfolio, asOf) so re-running a day recomputes it rather
-   * than producing two versions of the same close. The scheduler that calls
-   * this daily arrives in Phase 7; until then it is called on demand, and the
-   * absence of a snapshot is visible in the report rather than filled in.
+   * than producing two versions of the same close. The `daily-snapshot` job
+   * calls it once a day and the route calls it on demand; the absence of a
+   * snapshot is visible in the report rather than filled in.
    */
   async writeSnapshot(portfolioId: string, asOf: Date): Promise<SnapshotView> {
     const portfolio = await this.db.portfolio.findUnique({ where: { id: portfolioId } });

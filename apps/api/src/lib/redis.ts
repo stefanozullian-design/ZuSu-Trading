@@ -3,9 +3,9 @@ import { config } from '../config/env.js';
 import type { Logger } from './logger.js';
 
 /**
- * Redis is optional in Phase 1 — it backs caching and, from Phase 7, the job
- * queue. Its absence degrades the system (no automated execution, §55) but must
- * never crash the API or block read-only operation.
+ * Redis is optional: it backs caching and is where the job queue will live.
+ * Its absence is reported as DISABLED rather than hidden, and must never crash
+ * the API or block read-only operation.
  */
 let client: Redis | null = null;
 let unavailable = false;

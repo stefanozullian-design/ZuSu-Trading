@@ -77,12 +77,7 @@ export class HealthService {
     services.push(this.checkWebSocket());
     services.push(this.checkAnalysis());
     services.push(this.checkScheduler());
-    services.push(
-      this.notYetImplemented(
-        ServiceName.RECONCILIATION,
-        'Broker reconciliation arrives in Phase 8',
-      ),
-    );
+    services.push(await this.checkReconciliation());
     services.push(
       this.probe(
         ServiceName.NOTIFICATIONS,
@@ -141,6 +136,41 @@ export class HealthService {
    * than healthy, because "the scheduler is up" and "the snapshots are being
    * written" are different questions.
    */
+  /**
+   * Reconciliation's health is the age and verdict of the last run.
+   *
+   * "Never run" is DISABLED rather than HEALTHY, for the same reason the
+   * readiness gate calls it UNVERIFIABLE: a reconciler nobody has run has not
+   * agreed with anything.
+   */
+  private async checkReconciliation(): Promise<ServiceProbe> {
+    const latest = await this.db.reconciliation.findFirst({ orderBy: { startedAt: 'desc' } });
+    if (!latest) {
+      return this.probe(
+        ServiceName.RECONCILIATION,
+        ServiceStatus.DISABLED,
+        null,
+        'built, but never run — run it from the Risk page',
+      );
+    }
+
+    const ageHours = (Date.now() - latest.startedAt.getTime()) / 3_600_000;
+    if (!latest.succeeded) {
+      return this.probe(
+        ServiceName.RECONCILIATION,
+        ServiceStatus.DEGRADED,
+        null,
+        latest.detail ?? 'the last run found differences; nothing was corrected automatically',
+      );
+    }
+    return this.probe(
+      ServiceName.RECONCILIATION,
+      ServiceStatus.HEALTHY,
+      null,
+      `both records agreed ${ageHours.toFixed(1)}h ago`,
+    );
+  }
+
   private checkScheduler(): ServiceProbe {
     const states = this.schedulerStates?.() ?? null;
     if (!states || states.length === 0) {
@@ -243,7 +273,9 @@ export class HealthService {
         ServiceName.BROKER,
         ServiceStatus.DISABLED,
         null,
-        'Live broker adapter arrives in Phase 8',
+        config().ALLOW_LIVE_TRADING
+          ? 'live adapter present; per-account and broker-side consent still decide'
+          : 'live adapter present but ALLOW_LIVE_TRADING is false on this deployment',
       );
     }
     const started = Date.now();

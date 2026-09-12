@@ -113,8 +113,8 @@ export async function registerPerformanceRoutes(
         summary: 'Write the snapshot for an instant',
         description:
           'Idempotent per instant, so re-running a day recomputes it rather ' +
-          'than producing two versions of the same close. The daily scheduler ' +
-          'arrives in Phase 7; until then this is called on demand.',
+          'than producing two versions of the same close. The scheduler writes one a ' +
+          'day; this endpoint writes one on demand.',
         body: z.object({
           portfolioId: z.string().uuid(),
           asOf: z.string().datetime().optional(),

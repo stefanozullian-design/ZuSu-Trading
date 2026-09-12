@@ -39,7 +39,8 @@ export function RiskMonitor({ portfolioId }: { portfolioId: string }) {
                 </p>
                 {decision.blockers.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No blocking conditions. Portfolio-level limits join this check in Phase 7.
+                    No blocking conditions. Portfolio limits — exposure, loss, correlation and
+                    drawdown — are checked on every order by the risk engine.
                   </p>
                 ) : (
                   <ul className="mt-1 space-y-1">

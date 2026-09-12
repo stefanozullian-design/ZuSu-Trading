@@ -31,13 +31,13 @@ export interface GateDecision {
 /**
  * The deterministic gate every order must pass before it may reach a broker.
  *
- * Phase 1 has no order-submission path, so today the gate is evaluated for
- * display (the dashboard's risk monitor) and by the kill-switch tests. From
- * Phase 8 the order manager calls `assertCanTrade` on exactly the same object,
- * which is why the checks live here rather than in a route handler.
+ * The order manager calls `assertCanTrade` on exactly the same object the
+ * dashboard's risk monitor reads, which is why the checks live here rather
+ * than in a route handler: what the screen shows and what the order path
+ * enforces cannot drift apart if they are the same code.
  *
  * Portfolio-level limits (daily loss, exposure, correlation, …) are the risk
- * engine's job in Phase 7 and are deliberately not faked here.
+ * engine's job and are deliberately not duplicated here.
  */
 export class TradingGate {
   constructor(

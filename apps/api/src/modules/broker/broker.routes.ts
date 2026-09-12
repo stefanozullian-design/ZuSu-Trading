@@ -68,12 +68,11 @@ const quoteSchema = z.object({
 });
 
 /**
- * Read-only broker views.
+ * Read-only broker views, plus reconciliation.
  *
- * There is deliberately no order-placement endpoint in Phase 1: orders may only
- * ever be created behind the risk engine (Phase 7) and order manager (Phase 8).
- * Exposing a "place order" route now would mean shipping a path that bypasses
- * risk checks, which the build rules forbid.
+ * There is deliberately no order-placement endpoint here. Orders are created
+ * only behind the risk engine and the order manager, on `/api/trading`, and a
+ * second path to a broker would be a path around those checks.
  */
 export async function registerBrokerRoutes(
   app: FastifyInstance,

@@ -50,7 +50,8 @@ export async function registerRiskRoutes(
         summary: 'Whether this portfolio may trade right now, and what is blocking it',
         description:
           'The same decision the order manager will enforce before submitting an order. ' +
-          'Portfolio limits (daily loss, exposure, correlation) join it in Phase 7.',
+          'Portfolio limits (daily loss, exposure, correlation, drawdown) are checked ' +
+          'alongside it on every order.',
         params: idParams,
         response: { 200: gateDecisionSchema },
       },

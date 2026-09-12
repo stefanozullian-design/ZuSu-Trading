@@ -2,14 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { KillSwitch } from '@/components/KillSwitch';
-import { PhaseNotice } from '@/components/PhaseNotice';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
 import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { PortfolioSummary } from '@/lib/types';
+import type { AutomationConfig, PortfolioSummary } from '@/lib/types';
 
 export function DashboardPage() {
   const {
@@ -99,11 +98,7 @@ export function DashboardPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <RegimePanel />
-            <PhaseNotice title="Live trading" phase="Phase 9">
-              Orders reach a simulated venue in DEMO and PAPER. A live broker adapter arrives in
-              Phase 8, and switching a portfolio to it is a deliberate act by a person — never a
-              setting that flips itself.
-            </PhaseNotice>
+            <AutomationPanel />
           </div>
         </>
       )}
@@ -201,6 +196,61 @@ function RegimePanel() {
             &ldquo;neutral&rdquo;.
           </p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Where automation stands right now.
+ *
+ * The one number on this dashboard worth being unambiguous about: how many
+ * strategies can place an order without anyone clicking. It is read from the
+ * live configurations rather than described, because a reassuring sentence
+ * that is not checked against the data is how this goes wrong.
+ */
+function AutomationPanel() {
+  const { data: configs } = useQuery({
+    queryKey: ['automation-configs'],
+    queryFn: () => api<AutomationConfig[]>('/api/automation/configs'),
+    refetchInterval: 30_000,
+  });
+
+  const automatic = (configs ?? []).filter(
+    (config) => config.mode === 'LIMITED_AUTO' || config.mode === 'FULL_AUTO',
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Automation</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1.5 text-xs">
+        {automatic.length === 0 ? (
+          <p>
+            <span className="font-medium text-emerald-400">Nothing trades on its own.</span> All{' '}
+            {String((configs ?? []).length)} configurations wait for a person on every order.
+          </p>
+        ) : (
+          <>
+            <p className="font-medium text-amber-400">
+              {String(automatic.length)} of {String((configs ?? []).length)} configurations place
+              orders without a click.
+            </p>
+            <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+              {automatic.map((config) => (
+                <li key={config.configId}>
+                  · {config.strategyName} on {config.portfolioName} — {config.mode}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          Raising a strategy onto an automatic rung takes an administrator, one rung at a time, a
+          typed confirmation and eight conditions that all pass — re-checked before every automatic
+          order. Lowering it is one button and is never refused.
+        </p>
       </CardContent>
     </Card>
   );

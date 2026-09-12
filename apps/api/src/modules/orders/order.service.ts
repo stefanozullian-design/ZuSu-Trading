@@ -56,7 +56,7 @@ import { applyFill } from './position-book.js';
 /**
  * Portfolio-level limits this module does not enforce itself.
  *
- * Empty since Phase 7: the risk engine checks the whole book before an order
+ * Empty since the risk engine landed: it checks the whole book before an order
  * is written, and its findings are part of the pre-trade check below. The
  * constant stays because the shape of the honesty matters more than the fact
  * that it is currently empty — a limit that stops being enforced belongs here

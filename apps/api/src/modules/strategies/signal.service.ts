@@ -29,7 +29,7 @@ import type {
  * Evaluates a live strategy version over its universe and records a signal
  * where the entry rule fires. A signal is a *recommendation*: it is created at
  * status CREATED and nothing here can advance it toward an order. The risk
- * engine (Phase 7) and the order manager (Phase 8) own that, which is why this
+ * engine and the order manager own that, which is why this
  * module cannot reach a broker even in principle.
  *
  * The guarantee that matters is deduplication. "The same market event never
