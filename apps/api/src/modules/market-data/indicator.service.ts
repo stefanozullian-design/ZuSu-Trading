@@ -52,16 +52,32 @@ export interface IndicatorSnapshot {
   barsAvailable: number;
 }
 
+/**
+ * Per-bar values for every indicator the scanner and charts can reference.
+ *
+ * `close` and `volume` are included so a condition can compare an indicator to
+ * price without the caller having to carry the candles alongside this object.
+ */
 export interface IndicatorSeries {
   length: number;
+  openTime: Date[];
+  close: (Decimal | null)[];
+  volume: (Decimal | null)[];
   sma20: (Decimal | null)[];
   sma50: (Decimal | null)[];
-  bollingerUpper: (Decimal | null)[];
-  bollingerLower: (Decimal | null)[];
+  ema12: (Decimal | null)[];
+  ema26: (Decimal | null)[];
   rsi14: (Decimal | null)[];
   macd: (Decimal | null)[];
   macdSignal: (Decimal | null)[];
   macdHistogram: (Decimal | null)[];
+  bollingerUpper: (Decimal | null)[];
+  bollingerMiddle: (Decimal | null)[];
+  bollingerLower: (Decimal | null)[];
+  atr14: (Decimal | null)[];
+  vwap: (Decimal | null)[];
+  stochasticK: (Decimal | null)[];
+  stochasticD: (Decimal | null)[];
 }
 
 export class IndicatorService {
@@ -142,20 +158,36 @@ export class IndicatorService {
     options: { limit?: number } = {},
   ): Promise<IndicatorSeries> {
     const candles = await this.loadCandles(symbol, timeframe, options);
+    return this.seriesFrom(candles);
+  }
+
+  /** The same computation over candles the caller already holds. */
+  seriesFrom(candles: ProviderCandle[]): IndicatorSeries {
     const prices = closes(candles);
     const bands = bollinger(prices);
     const macdPoints = macd(prices);
+    const stochasticPoints = stochastic(candles);
 
     return {
       length: candles.length,
+      openTime: candles.map((c) => c.openTime),
+      close: prices,
+      volume: candles.map((c) => c.volume),
       sma20: sma(prices, 20),
       sma50: sma(prices, 50),
-      bollingerUpper: bands.map((b) => b.upper),
-      bollingerLower: bands.map((b) => b.lower),
+      ema12: ema(prices, 12),
+      ema26: ema(prices, 26),
       rsi14: rsi(prices, 14),
       macd: macdPoints.map((p) => p.macd),
       macdSignal: macdPoints.map((p) => p.signal),
       macdHistogram: macdPoints.map((p) => p.histogram),
+      bollingerUpper: bands.map((b) => b.upper),
+      bollingerMiddle: bands.map((b) => b.middle),
+      bollingerLower: bands.map((b) => b.lower),
+      atr14: atr(candles, 14),
+      vwap: vwap(candles),
+      stochasticK: stochasticPoints.map((p) => p.k),
+      stochasticD: stochasticPoints.map((p) => p.d),
     };
   }
 

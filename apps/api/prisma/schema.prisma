@@ -297,6 +297,7 @@ model User {
   approvedVersions  StrategyVersion[]   @relation("StrategyVersionApprover")
   backtests         Backtest[]
   riskLimitChanges  RiskLimit[]
+  scanDefinitions   ScanDefinition[]
 
   @@index([role])
   @@index([clientId])
@@ -654,6 +655,7 @@ model Watchlist {
 
   portfolio Portfolio?      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   items     WatchlistItem[]
+  scans     ScanDefinition[]
 
   @@index([portfolioId])
   @@map("watchlists")
@@ -670,6 +672,30 @@ model WatchlistItem {
 
   @@unique([watchlistId, instrumentId])
   @@map("watchlist_items")
+}
+
+/// A saved scanner filter (§9). Conditions are stored as JSON so the shape can
+/// grow without a migration; they are validated against a zod schema on the way
+/// in, so a stored scan can always be read back.
+model ScanDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  /// Candle timeframe the scan evaluates: 1m | 5m | 15m | 1h | 1d
+  timeframe   String
+  /// Array of { field, operator, operand, operandUpper? }. All must hold.
+  conditions  Json
+  /// Restrict to one watchlist's symbols. Null scans every known instrument.
+  watchlistId String?  @db.Uuid @map("watchlist_id")
+  createdBy   String?  @db.Uuid @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  lastRunAt   DateTime? @map("last_run_at")
+
+  watchlist Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
+  creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("scan_definitions")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { AssetClass, Decimal, dec } from '@zusu/shared';
+import { AssetClass, Decimal, MarketSession, dec } from '@zusu/shared';
 import { DEMO_UNIVERSE, MarketSimulator } from '../broker/market-simulator.js';
 import { MARKET_DEFINITIONS, buildCalendarDay, sessionAt } from './calendar.js';
 import type { MarketCalendarService } from './calendar.service.js';
@@ -91,9 +91,15 @@ export class DemoFeed {
     const intervalMs = TIMEFRAME_MINUTES[timeframe] * 60_000;
     const candles: ProviderCandle[] = [];
 
-    for (let t = from.getTime(); t < to.getTime(); t += intervalMs) {
+    // Bars sit on a fixed grid from the epoch, exactly as a real feed's do.
+    // Anchoring them to `from` instead would move every bar's open time
+    // whenever the backfill ran, so a second run would write a whole parallel
+    // set of bars rather than upserting the existing ones.
+    const firstBar = Math.ceil(from.getTime() / intervalMs) * intervalMs;
+
+    for (let t = firstBar; t < to.getTime(); t += intervalMs) {
       const openTime = new Date(t);
-      if (!this.isOpen(openTime)) continue;
+      if (!this.shouldEmit(openTime, timeframe)) continue;
       candles.push(this.candleAt(symbol, timeframe, openTime, intervalMs));
     }
 
@@ -175,15 +181,32 @@ export class DemoFeed {
     };
   }
 
-  /** Whether NYSE was in a tradable session at this instant, per the calendar. */
-  private isOpen(at: Date): boolean {
+  /**
+   * Whether a bar should exist at this instant, per the calendar.
+   *
+   * The question differs by timeframe. An intraday bar exists only if the
+   * market was actually open at its open instant. A daily bar's open instant is
+   * midnight, when no market is open, so asking the same question of it would
+   * discard every daily bar — it represents the whole session, so the right
+   * test is simply whether that date was a trading day.
+   */
+  private shouldEmit(at: Date, timeframe: Timeframe): boolean {
+    if (timeframe === '1d') {
+      // A daily bar keyed at UTC midnight *is* trading day D, so D is read
+      // straight off the instant's UTC fields. Converting it to the market's
+      // local date instead would land on D-1 — 00:00Z is the previous evening
+      // in New York — and emit a bar for every Saturday labelled as Friday.
+      return buildCalendarDay(NYSE, utcMidnight(at)).isTradingDay;
+    }
+
+    // An intraday bar belongs to the market-local date containing its instant,
+    // which for a late-evening bar is not the same as its UTC date.
     const { year, month, day } = zonedDateParts(at, NYSE.timeZone);
     const calendarDay = buildCalendarDay(
       NYSE,
       new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)),
     );
-    const session = sessionAt(calendarDay, at);
-    return session === 'REGULAR';
+    return sessionAt(calendarDay, at) === MarketSession.REGULAR;
   }
 
   /** A live quote for a symbol, straight from the simulator. */
@@ -204,4 +227,8 @@ export class DemoFeed {
       marketSession: this.simulator.sessionAt(at),
     };
   }
+}
+
+function utcMidnight(at: Date): Date {
+  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), 0, 0, 0, 0));
 }

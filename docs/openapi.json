@@ -2346,6 +2346,1447 @@
         }
       }
     },
+    "/api/market-data/watchlists": {
+      "get": {
+        "summary": "Every watchlist with its symbols",
+        "tags": ["watchlists"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "watchlists": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "portfolioId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "symbols": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "portfolioId",
+                          "isSystem",
+                          "symbols",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["watchlists"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a watchlist",
+        "tags": ["watchlists"],
+        "description": "An unknown symbol fails the whole request rather than being dropped: a watchlist that quietly lost half its entries is worse than an error.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "nullable": true
+                  },
+                  "symbols": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 20
+                    },
+                    "maxItems": 200
+                  }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "isSystem": {
+                      "type": "boolean"
+                    },
+                    "symbols": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "portfolioId",
+                    "isSystem",
+                    "symbols",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/watchlists/{id}": {
+      "patch": {
+        "summary": "Rename a watchlist or change its description",
+        "tags": ["watchlists"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "nullable": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "isSystem": {
+                      "type": "boolean"
+                    },
+                    "symbols": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "portfolioId",
+                    "isSystem",
+                    "symbols",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a watchlist",
+        "tags": ["watchlists"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": ["null"],
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/watchlists/{id}/symbols": {
+      "post": {
+        "summary": "Add a symbol to a watchlist",
+        "tags": ["watchlists"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  }
+                },
+                "required": ["symbol"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "isSystem": {
+                      "type": "boolean"
+                    },
+                    "symbols": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "portfolioId",
+                    "isSystem",
+                    "symbols",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/watchlists/{id}/symbols/{symbol}": {
+      "delete": {
+        "summary": "Remove a symbol from a watchlist",
+        "tags": ["watchlists"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "portfolioId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "isSystem": {
+                      "type": "boolean"
+                    },
+                    "symbols": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "portfolioId",
+                    "isSystem",
+                    "symbols",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/scans": {
+      "get": {
+        "summary": "Saved scans",
+        "tags": ["scans"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scans": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "timeframe": {
+                            "type": "string"
+                          },
+                          "conditions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          },
+                          "summary": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "watchlistId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "lastRunAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "timeframe",
+                          "conditions",
+                          "summary",
+                          "watchlistId",
+                          "lastRunAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["scans"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a scan",
+        "tags": ["scans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "nullable": true
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": ["1m", "5m", "15m", "1h", "1d"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "close",
+                            "volume",
+                            "sma20",
+                            "sma50",
+                            "ema12",
+                            "ema26",
+                            "rsi14",
+                            "macd",
+                            "macdSignal",
+                            "macdHistogram",
+                            "bollingerUpper",
+                            "bollingerMiddle",
+                            "bollingerLower",
+                            "atr14",
+                            "vwap",
+                            "stochasticK",
+                            "stochasticD"
+                          ]
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": [
+                            "gt",
+                            "gte",
+                            "lt",
+                            "lte",
+                            "between",
+                            "crosses_above",
+                            "crosses_below"
+                          ]
+                        },
+                        "operand": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "operandUpper": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["field", "operator", "operand"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 12
+                  },
+                  "watchlistId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                },
+                "required": ["name", "timeframe", "conditions"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "summary": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "watchlistId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "lastRunAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "timeframe",
+                    "conditions",
+                    "summary",
+                    "watchlistId",
+                    "lastRunAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/scans/{id}": {
+      "patch": {
+        "summary": "Edit a saved scan",
+        "tags": ["scans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "nullable": true
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": ["1m", "5m", "15m", "1h", "1d"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "close",
+                            "volume",
+                            "sma20",
+                            "sma50",
+                            "ema12",
+                            "ema26",
+                            "rsi14",
+                            "macd",
+                            "macdSignal",
+                            "macdHistogram",
+                            "bollingerUpper",
+                            "bollingerMiddle",
+                            "bollingerLower",
+                            "atr14",
+                            "vwap",
+                            "stochasticK",
+                            "stochasticD"
+                          ]
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": [
+                            "gt",
+                            "gte",
+                            "lt",
+                            "lte",
+                            "between",
+                            "crosses_above",
+                            "crosses_below"
+                          ]
+                        },
+                        "operand": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "operandUpper": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["field", "operator", "operand"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 12
+                  },
+                  "watchlistId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "summary": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "watchlistId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "lastRunAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "timeframe",
+                    "conditions",
+                    "summary",
+                    "watchlistId",
+                    "lastRunAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved scan",
+        "tags": ["scans"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": ["null"],
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/scans/run": {
+      "post": {
+        "summary": "Run a filter without saving it",
+        "tags": ["scans"],
+        "description": "Symbols whose indicators are still in warm-up are returned under `notEvaluable`, never silently excluded — so \"no matches\" can be told apart from \"not enough data\".",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "timeframe": {
+                    "type": "string",
+                    "enum": ["1m", "5m", "15m", "1h", "1d"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "close",
+                            "volume",
+                            "sma20",
+                            "sma50",
+                            "ema12",
+                            "ema26",
+                            "rsi14",
+                            "macd",
+                            "macdSignal",
+                            "macdHistogram",
+                            "bollingerUpper",
+                            "bollingerMiddle",
+                            "bollingerLower",
+                            "atr14",
+                            "vwap",
+                            "stochasticK",
+                            "stochasticD"
+                          ]
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": [
+                            "gt",
+                            "gte",
+                            "lt",
+                            "lte",
+                            "between",
+                            "crosses_above",
+                            "crosses_below"
+                          ]
+                        },
+                        "operand": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "operandUpper": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "constant": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 32
+                                }
+                              },
+                              "required": ["constant"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "type": "string",
+                                  "enum": [
+                                    "close",
+                                    "volume",
+                                    "sma20",
+                                    "sma50",
+                                    "ema12",
+                                    "ema26",
+                                    "rsi14",
+                                    "macd",
+                                    "macdSignal",
+                                    "macdHistogram",
+                                    "bollingerUpper",
+                                    "bollingerMiddle",
+                                    "bollingerLower",
+                                    "atr14",
+                                    "vwap",
+                                    "stochasticK",
+                                    "stochasticD"
+                                  ]
+                                }
+                              },
+                              "required": ["field"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["field", "operator", "operand"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 12
+                  },
+                  "watchlistId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "barLimit": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 2000
+                  }
+                },
+                "required": ["timeframe", "conditions"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "ranAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "universe": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "evaluated": {
+                      "type": "integer"
+                    },
+                    "matches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "asOf": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "values": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["symbol", "asOf", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "notEvaluable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "missingField": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": ["symbol", "reason", "missingField"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "timeframe",
+                    "ranAt",
+                    "summary",
+                    "universe",
+                    "evaluated",
+                    "matches",
+                    "notEvaluable"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/scans/{id}/run": {
+      "post": {
+        "summary": "Run a saved scan",
+        "tags": ["scans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "not": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "barLimit": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": 2000
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "ranAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "universe": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "evaluated": {
+                      "type": "integer"
+                    },
+                    "matches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "asOf": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "values": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["symbol", "asOf", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "notEvaluable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "missingField": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": ["symbol", "reason", "missingField"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "timeframe",
+                    "ranAt",
+                    "summary",
+                    "universe",
+                    "evaluated",
+                    "matches",
+                    "notEvaluable"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/risk/portfolios/{id}/gate": {
       "get": {
         "summary": "Whether this portfolio may trade right now, and what is blocking it",

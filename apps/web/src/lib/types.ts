@@ -238,3 +238,44 @@ export interface CalendarView {
   }[];
   openHalts: { symbol: string; reason: string; haltedAt: string }[];
 }
+
+export interface Watchlist {
+  id: string;
+  name: string;
+  description: string | null;
+  portfolioId: string | null;
+  isSystem: boolean;
+  symbols: string[];
+  updatedAt: string;
+}
+
+export type ScanOperand = { constant: string } | { field: string };
+
+export interface ScanCondition {
+  field: string;
+  operator: string;
+  operand: ScanOperand;
+  operandUpper?: ScanOperand;
+}
+
+export interface SavedScan {
+  id: string;
+  name: string;
+  description: string | null;
+  timeframe: string;
+  conditions: ScanCondition[];
+  summary: string[];
+  watchlistId: string | null;
+  lastRunAt: string | null;
+  updatedAt: string;
+}
+
+export interface ScanRunResult {
+  timeframe: string;
+  ranAt: string;
+  summary: string[];
+  universe: string[];
+  evaluated: number;
+  matches: { symbol: string; asOf: string; values: Record<string, string> }[];
+  notEvaluable: { symbol: string; reason: string; missingField: string | null }[];
+}

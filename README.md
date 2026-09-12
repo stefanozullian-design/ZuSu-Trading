@@ -33,7 +33,7 @@ npm run build -w @zusu/shared   # the API and web client both import it
 npm run db:generate             # Prisma client
 npm run db:deploy               # apply migrations
 npm run seed                    # demo users, portfolio, positions, strategies
-npm run backfill:demo           # market calendars + ~13,000 simulated candles
+npm run backfill:demo           # calendars, ~13,700 simulated candles, example scans
 
 npm run dev                     # API on :4000, web client on :5173
 ```
@@ -57,7 +57,7 @@ The whole application is explorable in DEMO mode with **no API credentials of an
 kind**: market data comes from a deterministic simulator and orders would go to a
 simulated venue.
 
-### The Market page
+### The Market and Scanner pages
 
 `/market` is where Phase 2 is visible: a price chart with moving averages and a
 Bollinger envelope, RSI and MACD panels, every indicator value as of the newest
@@ -65,9 +65,17 @@ bar, the market session and per-symbol tradability, and what the data-quality
 layer currently thinks of the feed. An indicator without enough history shows as
 `—  needs 50`, never as zero.
 
-To point it at real data instead of the simulator, set `MARKET_DATA_PROVIDER=MASSIVE`
-and `MASSIVE_API_KEY` in `.env`. Massive.com is the former Polygon.io; its free
-tier is end-of-day only, so intraday needs a paid plan.
+`/scanner` filters that universe. Conditions are ANDed, and a condition's
+right-hand side can be a constant or another field, so "close above sma50" is
+expressible. Symbols whose indicators are still in warm-up appear under
+**Could not evaluate** rather than being dropped — so an empty result set can
+be told apart from an unanswerable one. Filters can be saved and re-run;
+`backfill:demo` seeds three examples.
+
+To point both pages at real data instead of the simulator, set
+`MARKET_DATA_PROVIDER=MASSIVE` and `MASSIVE_API_KEY` in `.env`. Massive.com is
+the former Polygon.io; its free tier is end-of-day only, so intraday needs a
+paid plan.
 
 API docs are at <http://localhost:4000/docs>.
 

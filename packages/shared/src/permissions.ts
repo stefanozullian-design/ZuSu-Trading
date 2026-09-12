@@ -28,6 +28,11 @@ export const Permission = {
    * authenticated role has it.
    */
   MARKET_DATA_READ: 'market_data:read',
+  /**
+   * Creating and editing watchlists and saved scans. Withheld from VIEWER and
+   * CLIENT: both may read market data, neither configures the platform.
+   */
+  WATCHLIST_WRITE: 'watchlist:write',
   /** Reading configured risk limits. */
   RISK_READ: 'risk:read',
   /** Changing risk limits — deliberately withheld from MANAGER (spec §40). */
@@ -62,6 +67,7 @@ const CLIENT_PERMISSIONS: Permission[] = [
 
 const MANAGER_PERMISSIONS: Permission[] = [
   ...CLIENT_PERMISSIONS,
+  Permission.WATCHLIST_WRITE,
   Permission.CLIENT_READ,
   Permission.PORTFOLIO_WRITE,
   Permission.BROKER_ACCOUNT_READ,
