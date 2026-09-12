@@ -4,7 +4,8 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 2 started** (provider chosen, adapter built).
+Current position: **Phase 2 in progress** (provider, adapter, quality layer
+and calendar engine done; indicators, scanner and charts remain).
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---

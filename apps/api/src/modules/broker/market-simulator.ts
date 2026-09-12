@@ -1,4 +1,11 @@
 import { MarketSession } from '@zusu/shared';
+import {
+  MARKET_DEFINITIONS,
+  buildCalendarDay,
+  sessionAt,
+  type CalendarDay,
+} from '../market-data/calendar.js';
+import { zonedDateParts } from '../market-data/time-zone.js';
 import { Decimal, dec } from '@zusu/shared';
 
 /**
@@ -60,6 +67,8 @@ export const DEMO_UNIVERSE: SimulatedInstrument[] = [
   { symbol: 'QQQ', basePrice: 471.8, volatility: 0.18, averageDailyVolume: 45_000_000 },
   { symbol: 'IWM', basePrice: 218.7, volatility: 0.2, averageDailyVolume: 31_000_000 },
 ];
+
+const NYSE = MARKET_DEFINITIONS.XNYS as (typeof MARKET_DEFINITIONS)['XNYS'];
 
 export class MarketSimulator {
   private readonly seed: number;
@@ -142,28 +151,29 @@ export class MarketSimulator {
   /**
    * Session classification for the simulated venue.
    *
-   * This is a US-equity approximation for DEMO only — holidays, early closes,
-   * halts and per-symbol availability are the market-calendar engine's job
-   * (Phase 2), and this method is replaced by it.
+   * Delegates to the market-calendar engine's pure half, so the simulator and
+   * the platform agree on when the market is open and both get daylight saving
+   * right — the previous implementation assumed EDT year-round and was an hour
+   * out for the winter half of the year.
+   *
+   * Holidays and early closes still do not apply here: those come from a
+   * provider, and the simulator has none. `MarketCalendarService` is the
+   * authority for anything trading against real data.
    */
   sessionAt(at: Date = new Date(this.now())): MarketSession {
-    const utcDay = at.getUTCDay();
-    if (utcDay === 0 || utcDay === 6) return MarketSession.CLOSED;
-    const minutes = at.getUTCHours() * 60 + at.getUTCMinutes();
-    // 09:30–16:00 America/New_York expressed in UTC (EDT, UTC-4).
-    const preOpen = 8 * 60; // 04:00 ET
-    const open = 13 * 60 + 30;
-    const close = 20 * 60;
-    const afterClose = 24 * 60; // 20:00 ET
-    if (minutes >= open && minutes < close) return MarketSession.REGULAR;
-    if (minutes >= preOpen && minutes < open) return MarketSession.PRE_MARKET;
-    if (minutes >= close && minutes < afterClose) return MarketSession.AFTER_HOURS;
-    return MarketSession.CLOSED;
+    return sessionAt(this.calendarDay(at), at);
+  }
+
+  /** The generated NYSE row for the market-local date containing `at`. */
+  private calendarDay(at: Date): CalendarDay {
+    const { year, month, day } = zonedDateParts(at, NYSE.timeZone);
+    return buildCalendarDay(NYSE, new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)));
   }
 
   private minutesIntoSession(at: Date): number {
-    const minutes = at.getUTCHours() * 60 + at.getUTCMinutes();
-    return minutes - (13 * 60 + 30);
+    const open = this.calendarDay(at).regularOpen;
+    if (!open) return 0;
+    return Math.floor((at.getTime() - open.getTime()) / 60_000);
   }
 
   /**

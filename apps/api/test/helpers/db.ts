@@ -50,6 +50,7 @@ const TABLES = [
   'market_data_quotes',
   'market_data_candles',
   'option_contracts',
+  'trading_halts',
   'instruments',
   'market_regimes',
   'market_calendar_days',

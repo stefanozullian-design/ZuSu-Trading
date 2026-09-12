@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { MarketDataQualityService } from '../../src/modules/market-data/quality.service.js';
 import { DataQualityIssue } from '../../src/modules/market-data/quality.js';
 import type { ProviderCandle, ProviderQuote } from '../../src/modules/market-data/types.js';
+import { MarketCalendarService } from '../../src/modules/market-data/calendar.service.js';
 import { TradingGate } from '../../src/modules/risk/trading-gate.js';
 import { BrokerRegistry } from '../../src/modules/broker/broker-registry.js';
 import { HealthService } from '../../src/modules/health/health.service.js';
@@ -296,11 +297,25 @@ describe('verdict shape', () => {
 });
 
 describe('trading gate integration', () => {
+  // A fixed instant inside a regular NYSE session. The gate takes its clock as
+  // an input precisely so these assertions do not depend on when they run.
+  const DURING_SESSION = new Date('2026-07-15T15:00:00.000Z');
+  let calendar: MarketCalendarService;
+
   function gateFor() {
     const brokers = new BrokerRegistry();
     const health = new HealthService(db);
-    return new TradingGate(db, brokers, health, quality);
+    return new TradingGate(db, brokers, health, quality, calendar);
   }
+
+  beforeEach(async () => {
+    calendar = new MarketCalendarService(db);
+    await calendar.sync(
+      'XNYS',
+      new Date('2026-07-13T00:00:00.000Z'),
+      new Date('2026-07-19T00:00:00.000Z'),
+    );
+  });
 
   it('blocks a PAPER portfolio when the feed is down', async () => {
     const portfolio = await createPortfolio(db, { name: 'Paper', environment: 'PAPER' });
@@ -337,7 +352,7 @@ describe('trading gate integration', () => {
     const portfolio = await createPortfolio(db, { name: 'Paper', environment: 'PAPER' });
     await quality.ingestQuote(quote({ bid: dec('101'), ask: dec('100') }));
 
-    const decision = await gateFor().evaluate(portfolio, 'AAPL');
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'AAPL', at: DURING_SESSION });
     const blocker = decision.blockers.find((b) => b.code.startsWith('MARKET_DATA_IMPOSSIBLE'));
     expect(blocker?.severity).toBe('BLOCKING');
     expect(blocker?.message).toContain('AAPL');
@@ -350,7 +365,7 @@ describe('trading gate integration', () => {
     const portfolio = await createPortfolio(db, { name: 'Paper', environment: 'PAPER' });
     await quality.ingestQuote(quote({ bid: dec('101'), ask: dec('100') }));
 
-    const decision = await gateFor().evaluate(portfolio, 'MSFT');
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'MSFT', at: DURING_SESSION });
     expect(decision.blockers.some((b) => b.code.startsWith('MARKET_DATA_IMPOSSIBLE'))).toBe(false);
   });
 
@@ -360,7 +375,7 @@ describe('trading gate integration', () => {
     await quality.ingestQuote(quote({ bid: dec('101'), ask: dec('100') }));
     await quality.ingestQuote(quote());
 
-    const decision = await gateFor().evaluate(portfolio, 'AAPL');
+    const decision = await gateFor().evaluate(portfolio, { symbol: 'AAPL', at: DURING_SESSION });
     expect(decision.blockers.some((b) => b.code.startsWith('MARKET_DATA_'))).toBe(false);
   });
 });

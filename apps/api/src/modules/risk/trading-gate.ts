@@ -1,9 +1,16 @@
 import type { Portfolio, PrismaClient } from '@prisma/client';
-import { ExecutionMode, ServiceStatus, TradingEnvironment, TradingState } from '@zusu/shared';
+import {
+  ExecutionMode,
+  MarketSession,
+  ServiceStatus,
+  TradingEnvironment,
+  TradingState,
+} from '@zusu/shared';
 import { config } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { HealthService } from '../health/health.service.js';
+import type { MarketCalendarService } from '../market-data/calendar.service.js';
 import type { MarketDataQualityService } from '../market-data/quality.service.js';
 
 export type BlockerSeverity = 'BLOCKING' | 'WARNING';
@@ -38,16 +45,27 @@ export class TradingGate {
     private readonly registry: BrokerRegistry,
     private readonly health: HealthService,
     private readonly quality: MarketDataQualityService,
+    private readonly calendar: MarketCalendarService,
   ) {}
 
   /**
-   * @param symbol When given, open blocking data-quality events for that symbol
-   *   are blocking. Without it only feed-wide faults block, because one
-   *   impossible symbol should not halt an entire portfolio.
+   * @param options.symbol The symbol an order is for, when there is one. Two
+   *   checks need it: per-symbol data-quality faults (without it only feed-wide
+   *   faults block, because one impossible symbol should not halt a whole
+   *   portfolio), and whether that symbol is tradable at all at `at` — market
+   *   closed, holiday, halted, or not tradable on this platform.
+   * @param options.at The instant to judge. Injectable so a gate decision is
+   *   reproducible: a check that read the wall clock would give a different
+   *   answer depending on when it ran, which is untestable and unauditable.
    */
-  async evaluate(portfolio: Portfolio, symbol?: string): Promise<GateDecision> {
+  async evaluate(
+    portfolio: Portfolio,
+    options: { symbol?: string; at?: Date } = {},
+  ): Promise<GateDecision> {
     const blockers: GateBlocker[] = [];
     const environment = portfolio.environment as TradingEnvironment;
+    const symbol = options.symbol;
+    const at = options.at ?? new Date();
 
     if (!portfolio.isActive) {
       blockers.push({
@@ -148,6 +166,21 @@ export class TradingGate {
       }
     }
 
+    // Tradability of the specific symbol (§7): market closed, holiday, halt, or
+    // an instrument that is not tradable at all. Only checkable when the order
+    // names a symbol, and DEMO is priced by the simulator, which has its own
+    // session logic.
+    if (symbol && environment !== TradingEnvironment.DEMO) {
+      const verdict = await this.calendar.isTradable(symbol, at);
+      if (!verdict.tradable) {
+        blockers.push({
+          code: verdict.session === MarketSession.HALTED ? 'SYMBOL_HALTED' : 'MARKET_CLOSED',
+          message: verdict.reason ?? `${symbol} cannot be traded right now.`,
+          severity: 'BLOCKING',
+        });
+      }
+    }
+
     return {
       portfolioId: portfolio.id,
       allowed: !blockers.some((b) => b.severity === 'BLOCKING'),
@@ -157,11 +190,14 @@ export class TradingGate {
   }
 
   /** Throws with the first blocking reason. Never silently permits (§84 Rule 4). */
-  async assertCanTrade(portfolioId: string, symbol?: string): Promise<GateDecision> {
+  async assertCanTrade(
+    portfolioId: string,
+    options: { symbol?: string; at?: Date } = {},
+  ): Promise<GateDecision> {
     const portfolio = await this.db.portfolio.findUnique({ where: { id: portfolioId } });
     if (!portfolio) throw new AppError('NOT_FOUND', 'Portfolio not found');
 
-    const decision = await this.evaluate(portfolio, symbol);
+    const decision = await this.evaluate(portfolio, options);
     if (!decision.allowed) {
       const blocking = decision.blockers.find((b) => b.severity === 'BLOCKING');
       throw new AppError(

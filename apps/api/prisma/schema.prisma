@@ -482,6 +482,7 @@ model Instrument {
   candles        MarketDataCandle[]
   quotes         MarketDataQuote[]
   qualityEvents  MarketDataQualityEvent[]
+  halts          TradingHalt[]
   watchlistItems WatchlistItem[]
   optionContracts OptionContract[]
 
@@ -575,6 +576,28 @@ model MarketCalendarDay {
 
   @@unique([marketCode, date])
   @@map("market_calendar_days")
+}
+
+/// A trading halt on one symbol (§7). Separate from `Instrument.isTradable`,
+/// which says whether a symbol is ever tradable; a halt is a window in time.
+/// An open halt has `releasedAt` null and blocks trading in that symbol.
+model TradingHalt {
+  id           String    @id @default(uuid()) @db.Uuid
+  instrumentId String    @db.Uuid @map("instrument_id")
+  symbol       String
+  /// e.g. LULD, NEWS_PENDING, REGULATORY, PROVIDER_REPORTED
+  reason       String
+  detail       String?
+  /// Who or what recorded it, for auditability.
+  source       String
+  haltedAt     DateTime  @default(now()) @map("halted_at")
+  releasedAt   DateTime? @map("released_at")
+
+  instrument Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@index([symbol, releasedAt])
+  @@index([haltedAt])
+  @@map("trading_halts")
 }
 
 model MarketRegime {
