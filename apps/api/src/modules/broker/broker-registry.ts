@@ -4,6 +4,8 @@ import { config } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import { DemoBroker } from './demo-broker.js';
 import { PaperBroker } from './paper-broker.js';
+import { RobinhoodBroker } from './robinhood/robinhood-broker.js';
+import { UnconfiguredRobinhoodTransport, type RobinhoodTransport } from './robinhood/transport.js';
 import { StoredBarPrices } from './stored-bar-prices.js';
 import type { BrokerAdapter } from './types.js';
 
@@ -18,6 +20,7 @@ import type { BrokerAdapter } from './types.js';
 export class BrokerRegistry {
   private readonly demoBrokers = new Map<string, DemoBroker>();
   private readonly paperBrokers = new Map<string, PaperBroker>();
+  private readonly liveBrokers = new Map<string, RobinhoodBroker>();
 
   /**
    * @param options.now Injectable clock, handed to the simulated venues.
@@ -26,7 +29,22 @@ export class BrokerRegistry {
    *   instant an input applies here.
    */
   constructor(
-    private readonly options: { seed?: number; db?: PrismaClient; now?: () => number } = {},
+    private readonly options: {
+      seed?: number;
+      db?: PrismaClient;
+      now?: () => number;
+      /**
+       * The live transport, when one exists. Absent on every deployment that
+       * has no Robinhood credentials, which is all of them today.
+       */
+      robinhood?: RobinhoodTransport;
+      /**
+       * Per-account consent to place live orders, separate from
+       * `ALLOW_LIVE_TRADING`. Both must be true, and the broker's own
+       * `agentic_allowed` flag on top of that.
+       */
+      liveOrdersEnabled?: boolean;
+    } = {},
   ) {}
 
   forPortfolio(portfolio: Pick<Portfolio, 'id' | 'environment' | 'initialCapital'>): BrokerAdapter {
@@ -73,17 +91,24 @@ export class BrokerRegistry {
         return paper;
       }
 
-      case TradingEnvironment.LIVE:
-        if (!config().ALLOW_LIVE_TRADING) {
-          throw new AppError(
-            'LIVE_TRADING_DISABLED',
-            'Live trading is disabled on this deployment (ALLOW_LIVE_TRADING is false).',
-          );
+      case TradingEnvironment.LIVE: {
+        // Reading a live account is allowed even when trading it is not:
+        // reconciliation has to be able to see an account it may not touch.
+        const transport = this.options.robinhood ?? new UnconfiguredRobinhoodTransport();
+        let live = this.liveBrokers.get(portfolio.id);
+        if (!live) {
+          live = new RobinhoodBroker({
+            accountNumber: portfolio.id,
+            transport,
+            liveOrdersEnabled: this.options.liveOrdersEnabled ?? false,
+            allowLiveTrading: config().ALLOW_LIVE_TRADING,
+            ...(this.options.now && { now: this.options.now }),
+          });
+          this.liveBrokers.set(portfolio.id, live);
         }
-        throw new AppError(
-          'NOT_IMPLEMENTED',
-          'The live broker adapter arrives in Phase 8. Live portfolios are read-only until then.',
-        );
+        assertSameEnvironment(environment, live.environment, 'BrokerRegistry.forPortfolio');
+        return live;
+      }
 
       default:
         throw new AppError('INTERNAL', `Unknown trading environment ${String(environment)}`);
@@ -109,5 +134,6 @@ export class BrokerRegistry {
   reset(): void {
     this.demoBrokers.clear();
     this.paperBrokers.clear();
+    this.liveBrokers.clear();
   }
 }

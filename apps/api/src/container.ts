@@ -18,6 +18,7 @@ import { AnthropicProvider, UnconfiguredProvider } from './modules/ai/anthropic-
 import { BacktestService } from './modules/backtest/backtest.service.js';
 import { JournalService } from './modules/journal/journal.service.js';
 import { NotificationService } from './modules/notifications/notification.service.js';
+import { ReconciliationService } from './modules/broker/reconciliation.service.js';
 import { RiskEngine } from './modules/risk/risk-engine.js';
 import { OrderService } from './modules/orders/order.service.js';
 import { PerformanceService } from './modules/performance/performance.service.js';
@@ -62,6 +63,7 @@ export interface AppContainer {
   analysis: AnalysisService;
   notifications: NotificationService;
   risk: RiskEngine;
+  reconciliation: ReconciliationService;
   ws: WebSocketGateway;
 }
 
@@ -92,6 +94,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const scans = new ScanService(db, indicators, watchlists);
   const strategies = new StrategyService(db);
   const risk = new RiskEngine(db);
+  const reconciliation = new ReconciliationService(db, brokers);
   const notifications = new NotificationService(db, access);
   const signals = new SignalService(
     db,
@@ -146,6 +149,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     analysis,
     notifications,
     risk,
+    reconciliation,
     ws,
   };
 }

@@ -1,5 +1,13 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { EnvironmentMismatchError, TradingEnvironment } from '@zusu/shared';
+import {
+  AssetClass,
+  EnvironmentMismatchError,
+  OrderSide,
+  OrderType,
+  TimeInForce,
+  TradingEnvironment,
+  dec,
+} from '@zusu/shared';
 import { BrokerRegistry } from '../../src/modules/broker/broker-registry.js';
 import { AppError } from '../../src/lib/errors.js';
 import { disconnectTestDb, resetDatabase, testDb } from '../helpers/db.js';
@@ -129,19 +137,31 @@ describe('broker registry', () => {
     expect(registry.forPortfolio(portfolio)).toBe(registry.forPortfolio(portfolio));
   });
 
-  it('refuses to hand back an adapter for LIVE while live trading is disabled', () => {
+  it('hands back a LIVE adapter that can be read but cannot place an order', async () => {
+    // Since Phase 8 the refusal sits at placement rather than at construction:
+    // reconciliation has to be able to *look at* an account it may not trade.
+    // Reading a live account and trading it are separate permissions, and
+    // conflating them meant a mismatch at the broker could never be seen.
     const registry = new BrokerRegistry({ seed: 1 });
-    try {
-      registry.forPortfolio({
-        id: '00000000-0000-4000-8000-00000000000c',
-        environment: 'LIVE',
-        initialCapital: { toString: () => '100000' } as never,
-      });
-      throw new Error('expected the registry to refuse');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppError);
-      expect((err as AppError).code).toBe('LIVE_TRADING_DISABLED');
-    }
+    const adapter = registry.forPortfolio({
+      id: '00000000-0000-4000-8000-00000000000c',
+      environment: 'LIVE',
+      initialCapital: { toString: () => '100000' } as never,
+    });
+    expect(adapter.environment).toBe(TradingEnvironment.LIVE);
+    expect(adapter.kind).toBe('ROBINHOOD');
+
+    await expect(
+      adapter.placeOrder({
+        idempotencyKey: 'never-sent',
+        symbol: 'AAPL',
+        assetClass: AssetClass.EQUITY,
+        side: OrderSide.BUY,
+        orderType: OrderType.MARKET,
+        timeInForce: TimeInForce.DAY,
+        quantity: dec(1),
+      }),
+    ).rejects.toThrow(/ALLOW_LIVE_TRADING is false/);
   });
 
   it('refuses PAPER until the paper broker exists, rather than faking one', () => {

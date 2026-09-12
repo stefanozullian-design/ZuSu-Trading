@@ -691,3 +691,29 @@ export interface RiskEventRow {
   actualValue: string | null;
   createdAt: string;
 }
+
+/** A reconciliation run: what the broker says, what this platform says (§26). */
+export interface ReconciliationDifference {
+  kind:
+    | 'CASH'
+    | 'POSITION_QUANTITY'
+    | 'POSITION_PRICE'
+    | 'POSITION_MISSING_HERE'
+    | 'POSITION_MISSING_AT_BROKER'
+    | 'ORDER_PLACED_ELSEWHERE';
+  symbol: string | null;
+  ours: string | null;
+  theirs: string | null;
+  detail: string;
+}
+
+export interface ReconciliationRun {
+  id: string;
+  portfolioId: string;
+  succeeded: boolean;
+  cashMismatch: boolean;
+  positionMismatch: boolean;
+  orderMismatch: boolean;
+  differences: ReconciliationDifference[];
+  detail: string;
+}

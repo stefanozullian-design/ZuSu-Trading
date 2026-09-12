@@ -1,11 +1,14 @@
 # Build status
 
-**Current phase: 7 — Risk engine and scheduler. Complete.** Phase 8 (the live
-broker adapter) is next, and is blocked on confirming Robinhood's API
-capabilities.
-**Live trading: not possible.** Orders exist now, but only in the DEMO and PAPER
-environments — the live adapter arrives in Phase 8 and `ALLOW_LIVE_TRADING`
-defaults to false. No order can be created without a person: the only path from
+**Current phase: 8 — Broker. Complete.** Phase 9 (the promotion ladder to live)
+is next.
+**Live trading: still not possible, now by three gates rather than by absence.**
+The live adapter exists and can _read_ a Robinhood account, because
+reconciliation has to be able to look at an account it may not touch. Placing an
+order through it requires all three of: `ALLOW_LIVE_TRADING` true on the
+deployment (it is false), `liveOrdersEnabled` true for that account, and the
+broker's own `agentic_allowed` flag true — consent given at Robinhood, by a
+person. Each refusal names which gate closed. No order can be created without a person: the only path from
 a recommendation to a broker requires `signal:approve` and is never called
 automatically.
 
@@ -415,6 +418,42 @@ without a reason, both return measures on screen together, a platform that
 says it has no analysis provider rather than showing an empty panel, a sizing
 calculator that refuses without a stop and names the limit it breached, and the
 kill switch including the API refusing a manager's release.
+
+### Phase 8 — Broker
+
+| Step                    | State                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1. Capability findings  | Done — read from the venue's published schemas, recorded in `contract.ts` with a confidence level on each answer. |
+| 2. Live adapter         | Done — `RobinhoodBroker` behind the same `BrokerAdapter` interface as the demo and paper venues.                  |
+| 3. Idempotency          | Done — `ref_id` carries our key; a retry after a crash cannot place a second order.                               |
+| 4. Defined-risk options | Done — verticals and iron condors, built as one multi-leg order; a naked wing is refused at construction.         |
+| 5. Reconciliation       | Done — compares both records field by field and **never writes a correction**.                                    |
+| 6. Transport seam       | Done — `UnconfiguredRobinhoodTransport` refuses every call, so an unconfigured deployment cannot half-work.       |
+
+**The trading engine learned nothing about Robinhood.** Everything
+venue-specific lives under `modules/broker/robinhood/`; the order service still
+talks to a `BrokerAdapter`. That is the test of the abstraction, and it is why
+the live case could be added without touching the approval path.
+
+**Reconciliation reports and never repairs.** Cash drift, a position the broker
+has and this platform does not, a position this platform has and the broker does
+not, a cost-basis difference, and an order placed somewhere else — each becomes a
+row and a risk event, and both records are left exactly as they were. A
+reconciler that silently picks a winner destroys the only evidence that the two
+ever disagreed. Robinhood reports who placed each order, so a trade a person made
+in the app is _identified_ rather than adopted: adopting it would attribute a
+human decision to a strategy, and every statistic about that strategy would then
+be about someone else.
+
+**One synthesis, declared.** Per-execution fill rows are not clearly exposed, so
+the adapter derives a stable execution id from the order id and the fill state.
+It is written down as a synthesis rather than presented as the venue's own data,
+because a fabricated execution id that looks real is worse than an honest gap.
+
+**What is still unverified.** No call has been made against the live Robinhood
+API from this deployment — the adapter is built against the published contract
+and exercised through a fake transport. The three gates are what make that safe
+to ship: the code path exists, and it cannot reach the venue.
 
 ## Blocked
 

@@ -4,8 +4,10 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 7 complete.** Phase 8 (the live broker adapter) is
-next, and is blocked on confirming what Robinhood's API actually exposes.
+Current position: **Phase 8 complete.** The live broker adapter, the
+defined-risk options builder and reconciliation are built, and live trading
+remains switched off: `ALLOW_LIVE_TRADING` is false, and two further gates sit
+behind it. Phase 9 (the promotion ladder to live) is next.
 Phase 6 remains unverified against the live Anthropic API, which needs a key
 this deployment does not have.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
@@ -143,16 +145,29 @@ live-strategy evaluation and the drawdown breaker. Every job may stop trading
 and none may start any — the closest it comes is producing recommendations that
 then wait for a person.
 
-## Phase 8 — Broker
+## Phase 8 — Broker ✅
 
 Live broker adapter, authentication, order management with idempotency, executions
 and partial fills, positions, reconciliation, error handling.
 
-**External dependency:** the broker's API capabilities must be confirmed first —
-client order IDs (for idempotency), execution-level fills (for partial fills and
-reconciliation), and defined-risk multi-leg option orders. Nothing should be
-assumed about the venue, and the trading engine must not acquire any
-broker-specific assumptions.
+**External dependency: resolved, from the venue's own published contract.** The
+three capability questions were answered by reading Robinhood's published tool
+schemas on 2026-09-12 — no calls were made, no account was read, no order was
+placed. The findings are recorded verbatim in
+`apps/api/src/modules/broker/robinhood/contract.ts`, each marked with how
+strongly the evidence supports it:
+
+| Question                         | Finding                                                                                                                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client order IDs for idempotency | **Confirmed** — `ref_id` on order placement.                                                                                                                                                 |
+| Execution-level fills            | **Partially confirmed** — fill quantity and average price are exposed; per-execution rows are not clearly documented, so the adapter synthesises a stable execution id and says that it did. |
+| Defined-risk multi-leg options   | **Confirmed** — 1–4 legs, limit orders only, `option_level_3` required.                                                                                                                      |
+
+Three constraints the schemas made explicit, which the adapter now enforces
+rather than discovering at rejection time: per-account `agentic_allowed`
+consent, `gfd`/`gtc` time-in-force only (IOC and FOK have no equivalent and are
+refused rather than substituted), and regular trading hours only for market
+orders.
 
 Exit criteria: a crash immediately after submission never produces a duplicate
 order; internal records and broker records are reconciled, and a mismatch halts

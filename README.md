@@ -4,12 +4,17 @@ A day-trading automation platform built so that **AI can recommend a trade but c
 never authorise one**. Every order passes a deterministic risk engine, every action
 is auditable, and the system fails safe when a dependency disappears.
 
-> **Phases 1 and 2 complete.** Identity, portfolios,
-> the demo broker, the trading gate, the kill switch and the audit log work end
-> to end. Market data adds the provider adapter, a data-quality layer, the market
-> calendar and a local indicator engine, all visible on the **Market** page.
-> **No route in this API can place an order** — orders may only ever be created
-> behind the risk engine (Phase 7) and order manager (Phase 8). See
+> **Phases 1 to 8 complete.** Identity, portfolios, market data, the strategy
+> builder and its promotion ladder, the backtest engine, paper trading, the
+> analysis layer, the risk engine and scheduler, and now the live broker adapter
+> with reconciliation. Every screen is reachable: **Market**, **Strategies**,
+> **Backtest**, **Trading**, **Performance**, **Risk** and **Audit**.
+>
+> **Live trading is off.** The live adapter can read a Robinhood account —
+> reconciliation has to be able to look at an account it may not touch — but
+> placing an order through it needs three separate gates open, and
+> `ALLOW_LIVE_TRADING` is false. The only path from a recommendation to a broker
+> runs through `signal:approve` and is never called automatically. See
 > [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---

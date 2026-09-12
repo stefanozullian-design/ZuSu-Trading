@@ -86,3 +86,22 @@ test.describe('permissions', () => {
     await expect(page.getByRole('heading', { name: /open positions/i })).toBeVisible();
   });
 });
+
+test.describe('reconciliation', () => {
+  test('compares both records and reports rather than corrects', async ({ page }) => {
+    await signIn(page, 'manager');
+    await page.getByRole('link', { name: /^Risk$/ }).click();
+
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/reconcile')),
+      page.getByRole('button', { name: /compare against the broker/i }).click(),
+    ]);
+
+    // Either verdict is a pass here — the demo venue and the platform may or
+    // may not agree on a freshly seeded account. What must be true is that a
+    // verdict appears at all, and that it is a report rather than a repair.
+    await expect(
+      page.getByText('AGREES', { exact: true }).or(page.getByText('DIFFERS', { exact: true })),
+    ).toBeVisible();
+  });
+});

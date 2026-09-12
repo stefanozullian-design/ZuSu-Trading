@@ -29,6 +29,32 @@ const brokerPositionSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+const differenceSchema = z.object({
+  kind: z.enum([
+    'CASH',
+    'POSITION_QUANTITY',
+    'POSITION_PRICE',
+    'POSITION_MISSING_HERE',
+    'POSITION_MISSING_AT_BROKER',
+    'ORDER_PLACED_ELSEWHERE',
+  ]),
+  symbol: z.string().nullable(),
+  ours: z.string().nullable(),
+  theirs: z.string().nullable(),
+  detail: z.string(),
+});
+
+const reconciliationSchema = z.object({
+  id: z.string(),
+  portfolioId: z.string(),
+  succeeded: z.boolean(),
+  cashMismatch: z.boolean(),
+  positionMismatch: z.boolean(),
+  orderMismatch: z.boolean(),
+  differences: z.array(differenceSchema),
+  detail: z.string(),
+});
+
 const quoteSchema = z.object({
   symbol: z.string(),
   provider: z.string(),
@@ -148,6 +174,55 @@ export async function registerBrokerRoutes(
         sourceTimestamp: quote.sourceTimestamp.toISOString(),
         receivedTimestamp: quote.receivedTimestamp.toISOString(),
       });
+    },
+  );
+
+  typed.post(
+    '/:id/reconcile',
+    {
+      preHandler: app.requirePermission(Permission.BROKER_ACCOUNT_READ),
+      schema: {
+        tags: ['broker'],
+        summary: 'Compare this platform’s record of a portfolio against the broker’s',
+        description:
+          'Reads both records and reports every difference. It never writes a correction: ' +
+          'the value of keeping two records is that they can disagree, and the disagreement ' +
+          'is the finding. A person decides which side is right.',
+        params: portfolioParams,
+        response: { 200: reconciliationSchema },
+      },
+    },
+    async (request, reply) => {
+      const portfolio = await container.access.assertPortfolioAccess(
+        principalOf(request),
+        request.params.id,
+        { permission: Permission.BROKER_ACCOUNT_READ },
+      );
+      const result = await container.reconciliation.run(portfolio.id);
+      return reply.send(result);
+    },
+  );
+
+  typed.get(
+    '/:id/reconciliations',
+    {
+      preHandler: app.requirePermission(Permission.BROKER_ACCOUNT_READ),
+      schema: {
+        tags: ['broker'],
+        summary: 'Past reconciliation runs for a portfolio, newest first',
+        params: portfolioParams,
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }),
+        response: { 200: z.array(reconciliationSchema) },
+      },
+    },
+    async (request, reply) => {
+      const portfolio = await container.access.assertPortfolioAccess(
+        principalOf(request),
+        request.params.id,
+        { permission: Permission.BROKER_ACCOUNT_READ },
+      );
+      const rows = await container.reconciliation.recent(portfolio.id, request.query.limit);
+      return reply.send(rows);
     },
   );
 }

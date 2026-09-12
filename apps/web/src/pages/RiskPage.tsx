@@ -1,5 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Calculator, ShieldAlert } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Calculator, Scale, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,13 @@ import { Input } from '@/components/ui/input';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { PortfolioSummary, RiskAssessment, RiskEventRow, RiskLimits } from '@/lib/types';
+import type {
+  PortfolioSummary,
+  ReconciliationRun,
+  RiskAssessment,
+  RiskEventRow,
+  RiskLimits,
+} from '@/lib/types';
 
 /**
  * Risk.
@@ -176,6 +182,8 @@ export function RiskPage() {
               </CardContent>
             </Card>
           )}
+
+          <ReconciliationPanel portfolioId={id} />
         </div>
 
         <div className="space-y-3">
@@ -356,3 +364,100 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 
 const money = (value: string) =>
   Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+/**
+ * Reconciliation.
+ *
+ * Two records of the same account, compared. The rule that makes it worth
+ * running is that it corrects nothing: a difference is reported and both sides
+ * are left as they are, because a reconciler that silently picks a winner
+ * destroys the only evidence that they ever disagreed.
+ */
+function ReconciliationPanel({ portfolioId }: { portfolioId: string }) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: runs } = useQuery({
+    queryKey: ['reconciliations', portfolioId],
+    queryFn: () => api<ReconciliationRun[]>(`/api/broker/${portfolioId}/reconciliations`),
+    enabled: Boolean(portfolioId),
+  });
+
+  const run = useMutation({
+    mutationFn: () =>
+      api<ReconciliationRun>(`/api/broker/${portfolioId}/reconcile`, { method: 'POST' }),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ['reconciliations', portfolioId] });
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
+  const latest = run.data ?? runs?.[0] ?? null;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center gap-2">
+        <Scale className="h-3.5 w-3.5 text-sky-400" aria-hidden />
+        <CardTitle>Reconciliation</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          disabled={run.isPending || !portfolioId}
+          onClick={() => run.mutate()}
+        >
+          {run.isPending ? 'Comparing…' : 'Compare against the broker'}
+        </Button>
+
+        {error && <p className="text-[11px] text-red-400">{error}</p>}
+
+        {!latest && !error && (
+          <p className="text-[11px] text-muted-foreground">
+            Never run for this portfolio. It reads both records and reports what differs; it never
+            writes a correction.
+          </p>
+        )}
+
+        {latest && (
+          <>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={cn(
+                  latest.succeeded
+                    ? 'border-emerald-500/40 text-emerald-400'
+                    : latest.positionMismatch
+                      ? 'border-red-500/40 text-red-400'
+                      : 'border-amber-500/40 text-amber-400',
+                )}
+              >
+                {latest.succeeded ? 'AGREES' : 'DIFFERS'}
+              </Badge>
+              <span className="text-[11px] text-muted-foreground">{latest.detail}</span>
+            </div>
+
+            {latest.differences.map((difference, index) => (
+              <div
+                key={`${difference.kind}-${difference.symbol ?? 'account'}-${String(index)}`}
+                className="rounded-md border border-border p-2"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {difference.kind.replaceAll('_', ' ').toLowerCase()}
+                  </span>
+                  {difference.symbol && <span className="font-medium">{difference.symbol}</span>}
+                </div>
+                <p className="tabular-nums text-[11px]">
+                  here {difference.ours ?? '—'} · broker {difference.theirs ?? '—'}
+                </p>
+                <p className="text-[11px] text-muted-foreground">{difference.detail}</p>
+              </div>
+            ))}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
