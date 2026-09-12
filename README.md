@@ -133,6 +133,27 @@ position opens, with the price and the signal that produced it; notes are
 appended and never overwrite what was captured at entry, because a thesis edited
 after the outcome is known stops being evidence.
 
+### Analysis
+
+The Trading page can ask a model about a recommendation. What comes back is an
+action, a confidence, a rationale and — the useful part — what would make it
+wrong, shown on the card next to the Approve button.
+
+It has no authority. The output schema has no quantity, no order type and no
+execute flag, so a model cannot express an instruction to trade even if it
+tries; an extra field it volunteers is stripped in parsing. A reply that does
+not match the schema is stored as a failure with its raw text and contributes
+nothing.
+
+Spend is capped before a call, not reported after one: a daily dollar budget, an
+hourly call ceiling and a per-call output cap. What has been spent today is on
+the same page.
+
+**This needs an `ANTHROPIC_API_KEY`, and this deployment does not have one.**
+Without a key the page says so and every attempt is recorded as a refusal. It
+will not substitute a plausible-looking opinion — a fabricated analysis is worse
+than none, because you could not tell.
+
 ### The Backtests page
 
 `/backtests` runs a strategy version over stored history. The design rule is
@@ -171,8 +192,8 @@ API docs are at <http://localhost:4000/docs>.
 ### Tests
 
 ```bash
-npm test              # 718 unit and integration tests
-npm run test:e2e      # 62 Playwright specs against a real browser
+npm test              # 739 unit and integration tests
+npm run test:e2e      # 66 Playwright specs against a real browser
 ```
 
 The end-to-end suite manages its own database, API and web server. It migrates,

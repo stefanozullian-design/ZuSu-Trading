@@ -13,7 +13,9 @@ import { buildContainer, type AppContainer } from './container.js';
 import { createLogger, loggerOptions } from './lib/logger.js';
 import { registerAuditRoutes } from './modules/audit/audit.routes.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
+import { registerAnalysisRoutes } from './modules/ai/analysis.routes.js';
 import { registerBacktestRoutes } from './modules/backtest/backtest.routes.js';
+import { registerNotificationRoutes } from './modules/notifications/notification.routes.js';
 import { registerOrderRoutes } from './modules/orders/order.routes.js';
 import { registerPerformanceRoutes } from './modules/performance/performance.routes.js';
 import { verifyAccessToken } from './modules/auth/tokens.js';
@@ -118,6 +120,12 @@ export async function buildApp(options: { container?: AppContainer } = {}): Prom
   });
   await app.register(async (api) => registerPerformanceRoutes(api, container), {
     prefix: '/api/performance',
+  });
+  await app.register(async (api) => registerAnalysisRoutes(api, container), {
+    prefix: '/api/analysis',
+  });
+  await app.register(async (api) => registerNotificationRoutes(api, container), {
+    prefix: '/api/notifications',
   });
   await app.register(async (api) => registerAuditRoutes(api, container), { prefix: '/api/audit' });
   await app.register(async (api) => registerSystemRoutes(api, container), {

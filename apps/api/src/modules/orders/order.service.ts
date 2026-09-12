@@ -137,6 +137,16 @@ export class OrderService {
     private readonly audit: AuditService,
     private readonly brokers: BrokerRegistry,
     private readonly gate: TradingGate,
+    /** Optional: a refusal that nobody is told about is still recorded. */
+    private readonly notifications?: {
+      notifySafe(input: {
+        portfolioId: string;
+        event: string;
+        title: string;
+        body: string;
+        metadata?: Record<string, unknown>;
+      }): Promise<void>;
+    },
   ) {}
 
   async list(principal: Principal, portfolioId: string, limit = 50): Promise<OrderView[]> {
@@ -358,6 +368,13 @@ export class OrderService {
         portfolioId: portfolio.id,
         correlationId,
         metadata: { reason: check.reason, checked: check.checked },
+      });
+      await this.notifications?.notifySafe({
+        portfolioId: portfolio.id,
+        event: 'ORDER_REJECTED',
+        title: `${input.symbol} order refused before it reached the broker`,
+        body: check.reason ?? 'A pre-trade check refused this order.',
+        metadata: { orderId: order.id, symbol: input.symbol },
       });
       return this.viewOf(order.id);
     }

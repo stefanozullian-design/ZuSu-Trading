@@ -1,6 +1,7 @@
 # Build status
 
-**Current phase: 5 — Paper trading. Complete.** Phase 6 (Claude analysis) is next.
+**Current phase: 6 — Claude analysis. Complete, unverified against the live
+API.** Phase 7 (the risk engine and scheduler) is next.
 **Live trading: not possible.** Orders exist now, but only in the DEMO and PAPER
 environments — the live adapter arrives in Phase 8 and `ALLOW_LIVE_TRADING`
 defaults to false. No order can be created without a person: the only path from
@@ -266,20 +267,72 @@ so a seeded position rendered "0.00" — indistinguishable from flat. Marks are
 now computed on read from the newest stored bar, and a symbol with no stored
 price returns null so the UI can say "not priced".
 
+### Phase 6 — Claude analysis
+
+| Step                      | State                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1. Provider adapter       | Done — `fetch`-based, fake-transport seam, usage mandatory. **Never called against the live API: no key exists here.** |
+| 2. Structured output      | Done — zod schemas; an unparseable reply is a stored failure, never a partial success.                                 |
+| 3. Two-stage flow         | Done — a cheap screen whose schema cannot recommend, then an analysis on what survived.                                |
+| 4. Cost and rate controls | Done — daily dollar budget, hourly call ceiling, per-call output cap, all checked before the call.                     |
+| 5. Reasoning display      | Done — the rationale, the invalidation and the missing context, on the card next to the Approve button.                |
+| 6. Regime detection       | Done — stored with the inputs that produced it, and absent when the model declines to name one.                        |
+| 7. Notifications          | Done — one channel that works (`BROWSER`), and a refusal for the five that have no transport.                          |
+
+**A model cannot authorise anything, and the schema is why.** `analysisResultSchema`
+has an action, a confidence, a risk level, a rationale and an invalidation. It has
+no quantity, no order type and no execute flag — zod strips any extra field a
+model volunteers, so an instruction to trade cannot survive parsing. An
+integration test asserts exactly that: given a reply containing
+`quantity: 500, execute: true`, the parsed result contains neither, the signal
+stays at CREATED, and no order exists.
+
+**An unparseable reply is a failure, loudly.** The raw text is stored,
+`responseValid` is false, the reason is recorded, and the call is still costed —
+a failed parse that recorded no cost would understate the day's spend and let a
+loop run for free. The parser is tolerant about a fenced-code wrapper and strict
+about the content; it never repairs a response, because a repaired response is
+one nobody can audit.
+
+**Three limits, all checked before the money is spent.** A daily dollar budget,
+an hourly call ceiling (the one that actually stops a runaway loop — a cheap
+model can make a thousand calls inside a modest dollar budget), and a per-call
+output cap. Refusals count towards the hourly ceiling, so a loop cannot spin on
+them. A model with no recorded price is not costed at zero: `costOf` throws, and
+the price table carries the date each entry was last checked.
+
+**With no key, the platform says so.** `UnconfiguredProvider` refuses every call
+and the refusal is a row; the Trading page shows "no analysis provider is
+configured" in place of an empty panel, and explains why nothing will be
+invented. A fabricated analysis is worse than none, because a reader cannot tell.
+
+**Notifications refuse the channels they cannot deliver.** `BROWSER` works — a
+row this application shows you, marked SENT because being readable _is_ the
+delivery. Push, email, SMS, Slack and Discord are in the schema with no
+transport behind them, and the service throws rather than marking something
+sent that nothing sent. Two events are notified: a recommendation waiting for a
+decision, and an order the platform refused. A stream of informational noise
+trains people to ignore the one that matters.
+
+**One omission this phase's own tests caught.** The notification routes had no
+`requireAuth` preHandler — authentication in this API is per route, not global —
+so the handler asked for a principal that had never been loaded and every call
+401'd. The fix is one line; the test that pins it is the more useful artefact.
+
 ### Test coverage
 
-718 unit and integration tests plus 62 end-to-end specs, all passing.
+739 unit and integration tests plus 66 end-to-end specs, all passing.
 
 | Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `apps/api` unit        | 356   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
-| `apps/api` integration | 325   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
+| `apps/api` unit        | 384   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
+| `apps/api` integration | 355   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
 | `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### End-to-end coverage
 
-62 Playwright specs drive a real browser against a real API and database. They
+66 Playwright specs drive a real browser against a real API and database. They
 exist for what the faster suites structurally cannot check: that the pieces are
 wired to each other, and that the honesty rules the backend enforces survive to
 the screen — a null indicator rendered as `— needs 50` rather than `0`, an
@@ -305,8 +358,9 @@ not promote, an admin walking a version to live one rung at a time, a dry run
 accounting for every symbol it looked at, a backtest that arrives with its
 modelling assumptions and its gross figure beside its net one, an approval queue
 with no "approve all" control anywhere on it, a rejection that will not submit
-without a reason, both return measures on screen together, and the kill switch
-including the API refusing a manager's release.
+without a reason, both return measures on screen together, a platform that
+says it has no analysis provider rather than showing an empty panel, and the
+kill switch including the API refusing a manager's release.
 
 ## Blocked
 
@@ -393,8 +447,14 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 5 — Paper trading. Complete.** Five carried items remain, all belonging
-to later phases:
+**Phase 6 — Claude analysis. Complete, unverified against the live API.** Six
+carried items remain:
+
+0. **Verify the Anthropic adapter against the real API.** There is no
+   `ANTHROPIC_API_KEY` on this deployment, so the request shape, the error
+   mapping and the usage accounting are written from the documentation and
+   tested against a fake transport. Until a key exists this is the one part of
+   the platform whose external contract is unconfirmed.
 
 1. Schedule the calendar sync. Rows are generated on demand today; a deployment
    needs `MarketCalendarService.sync` run ahead of each period. The scheduler
@@ -413,10 +473,7 @@ to later phases:
 5. Run backtests in the background. A run over a few thousand bars takes
    milliseconds, so it happens inline; a window of years will need a queue.
 
-Phase 5's tests pass, so **Phase 6 — Claude** may begin: the two-stage
-cheap-screen-then-analyse architecture, schema-validated structured output,
-cost and rate controls, the reasoning display, regime detection and
-notifications. **It needs an `ANTHROPIC_API_KEY`**, which this deployment does
-not have — the adapter and its tests can be built against a fake transport, as
-the market-data adapter was, but nothing can be verified against the real API
-until a key exists.
+Phase 6's tests pass, so **Phase 7 — Risk** may begin: position sizing, the
+portfolio, sector and correlation limits that `LIMITS_NOT_YET_ENFORCED` names,
+drawdown-triggered circuit breakers, and the scheduler that four of the items
+above are waiting for.

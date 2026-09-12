@@ -96,6 +96,19 @@ export class SignalService {
     private readonly indicators: IndicatorService,
     private readonly watchlists: WatchlistService,
     private readonly calendar: MarketCalendarService,
+    /**
+     * Optional: a signal that nobody is told about still exists and still
+     * waits, so a missing notifier must not stop one being recorded.
+     */
+    private readonly notifications?: {
+      notifySafe(input: {
+        portfolioId: string;
+        event: string;
+        title: string;
+        body: string;
+        metadata?: Record<string, unknown>;
+      }): Promise<void>;
+    },
   ) {}
 
   /**
@@ -352,6 +365,20 @@ export class SignalService {
         signalKey,
         symbol,
         direction: definition.entry.direction as SignalDirection,
+      });
+
+      // A recommendation is only useful if somebody knows it is waiting. The
+      // notification never changes the signal's status: it is a nudge, not an
+      // approval.
+      await this.notifications?.notifySafe({
+        portfolioId: args.portfolioId,
+        event: 'SIGNAL_AWAITING_APPROVAL',
+        title: `${symbol} ${definition.entry.direction} — waiting for a decision`,
+        body:
+          `${args.strategyName} produced a recommendation at ` +
+          `${referencePrice.toString()}. It will sit there until somebody approves or ` +
+          'rejects it.',
+        metadata: { signalId: created.id, symbol },
       });
     } catch (error) {
       if (isUniqueViolation(error)) {

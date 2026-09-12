@@ -610,3 +610,46 @@ export interface JournalEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AnalysisSpend {
+  spentTodayUsd: string;
+  callsLastHour: number;
+  limits: { dailyUsd: string; callsPerHour: number; maxOutputTokensPerCall: number };
+  providerConfigured: boolean;
+  providerName: string;
+}
+
+export interface AnalysisRow {
+  id: string;
+  signalId: string | null;
+  portfolioId: string | null;
+  model: string;
+  purpose: string;
+  responseValid: boolean;
+  validationError: string | null;
+  action: string | null;
+  confidence: string | null;
+  riskLevel: string | null;
+  regime: string | null;
+  rationale: string | null;
+  invalidation: string | null;
+  missingContext: string[];
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: string | null;
+  latencyMs: number | null;
+  createdAt: string;
+}
+
+export interface NotificationRow {
+  id: string;
+  event: string;
+  title: string;
+  body: string;
+  status: string;
+  channel: string;
+  portfolioId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  sentAt: string | null;
+}

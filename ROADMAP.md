@@ -4,7 +4,9 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 5 complete.** Phase 6 (Claude analysis) is next.
+Current position: **Phase 6 complete**, except for verification against the live
+Anthropic API, which needs a key this deployment does not have. Phase 7 (the
+risk engine and scheduler) is next.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -87,7 +89,7 @@ signal becomes an order only through `POST /signals/:id/approve`, which requires
 a person holding `signal:approve` and trading rights on the portfolio. Nothing
 in the codebase calls it automatically, and there is no setting that would.
 
-## Phase 6 — Claude
+## Phase 6 — Claude ✅ (unverified against the live API)
 
 AI analysis engine with structured input and schema-validated structured output,
 the two-stage cheap-screen-then-analyse architecture, cost and rate controls, AI
@@ -96,6 +98,19 @@ logging and reasoning display, market-regime detection, notifications.
 Exit criteria: an invalid or unexpected AI response results in **no trade**; per-
 minute, per-day and budget caps are enforced; AI confidence alone never authorises
 anything.
+
+All three hold, and the third is structural: the output schema has no field an
+order could be built from, so a model cannot express an instruction to trade
+even if it tries. An unparseable reply is stored as a failure with its raw text
+and contributes no advice. A call that would cross the daily budget or the
+hourly ceiling is refused before the money is spent, and the refusal is a row.
+
+**External dependency: unresolved.** This deployment has no `ANTHROPIC_API_KEY`,
+so nothing here has spoken to the live API. The adapter, the schemas, the
+governor and the two-stage flow are tested against a fake transport — the same
+approach the market-data adapter took — and the first real call may still find
+something unhandled. With no key the platform says so on screen and records the
+refusal; it never substitutes a plausible-looking opinion.
 
 ## Phase 7 — Risk engine
 

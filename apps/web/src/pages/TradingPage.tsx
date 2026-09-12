@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, RefreshCw, ShieldQuestion, X } from 'lucide-react';
+import { Bell, Brain, Check, RefreshCw, ShieldQuestion, X } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { OrderRow, PortfolioSummary, PositionWithLots, SignalRow } from '@/lib/types';
+import type {
+  AnalysisRow,
+  AnalysisSpend,
+  NotificationRow,
+  OrderRow,
+  PortfolioSummary,
+  PositionWithLots,
+  SignalRow,
+} from '@/lib/types';
 
 /**
  * Trading.
@@ -33,6 +41,7 @@ export function TradingPage() {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
+  const canAnalyse = can('strategy:write');
 
   const { data: portfolios } = useQuery({
     queryKey: ['portfolios'],
@@ -55,6 +64,21 @@ export function TradingPage() {
     refetchInterval: 20_000,
   });
 
+  const { data: analyses } = useQuery({
+    queryKey: ['analyses', id],
+    queryFn: () =>
+      api<{ analyses: AnalysisRow[]; spend: AnalysisSpend }>(
+        `/api/analysis?portfolioId=${id}&limit=50`,
+      ),
+    enabled: Boolean(id),
+  });
+
+  const { data: notifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api<{ notifications: NotificationRow[] }>('/api/notifications?limit=20'),
+    refetchInterval: 30_000,
+  });
+
   const { data: positions } = useQuery({
     queryKey: ['positions', id],
     queryFn: () =>
@@ -66,6 +90,8 @@ export function TradingPage() {
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['signals'] });
+    void queryClient.invalidateQueries({ queryKey: ['analyses'] });
+    void queryClient.invalidateQueries({ queryKey: ['notifications'] });
     void queryClient.invalidateQueries({ queryKey: ['orders'] });
     void queryClient.invalidateQueries({ queryKey: ['positions'] });
     void queryClient.invalidateQueries({ queryKey: ['portfolios'] });
@@ -106,6 +132,26 @@ export function TradingPage() {
     },
     onError: (err: Error) => setError(explainApiError(err)),
   });
+
+  const analyse = useMutation({
+    mutationFn: (signalId: string) =>
+      api<{ refusal: string | null }>(`/api/analysis/signals/${signalId}`, { method: 'POST' }),
+    onSuccess: (data) => {
+      setError(data.refusal);
+      invalidate();
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
+  const dismiss = useMutation({
+    mutationFn: (notificationId: string) =>
+      api<null>(`/api/notifications/${notificationId}/dismiss`, { method: 'POST' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  /** The newest analysis per signal, so the card shows the current advice. */
+  const adviceFor = (signalId: string): AnalysisRow | undefined =>
+    (analyses?.analyses ?? []).find((row) => row.signalId === signalId);
 
   const waiting = (signals?.signals ?? []).filter(
     (signal) => signal.status === 'CREATED' || signal.status === 'PENDING_APPROVAL',
@@ -227,12 +273,58 @@ export function TradingPage() {
                 Approving sizes the order, runs the pre-trade checks and submits it. Blank quantity
                 uses the strategy version&apos;s maximum notional.
               </p>
+
+              <Advice
+                analysis={adviceFor(signal.id)}
+                canAnalyse={canAnalyse}
+                pending={analyse.isPending}
+                onAnalyse={() => analyse.mutate(signal.id)}
+              />
             </div>
           ))}
         </CardContent>
       </Card>
 
       <div className="grid gap-3 lg:grid-cols-2">
+        {analyses?.spend && <SpendCard spend={analyses.spend} />}
+
+        <Card>
+          <CardHeader className="flex-row items-center gap-2">
+            <Bell className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            <CardTitle>Notifications</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {(notifications?.notifications ?? []).length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Nothing waiting. Only two things are notified: something you have to decide, and
+                something the platform refused to do.
+              </p>
+            )}
+            {(notifications?.notifications ?? []).map((notification) => (
+              <div
+                key={notification.id}
+                className="flex items-start gap-2 rounded-md border border-border p-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium">{notification.title}</p>
+                  <p className="text-[11px] text-muted-foreground">{notification.body}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatDateTime(notification.createdAt)} · {notification.channel}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ml-auto rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={`Dismiss ${notification.title}`}
+                  onClick={() => dismiss.mutate(notification.id)}
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Positions and their tax lots</CardTitle>
@@ -361,5 +453,130 @@ export function TradingPage() {
         </Card>
       </div>
     </main>
+  );
+}
+
+/**
+ * A model's advice on one recommendation.
+ *
+ * The disclaimer is on the card rather than in a footnote: an analysis has no
+ * authority, and the place a person might forget that is exactly here, next to
+ * the Approve button.
+ */
+function Advice({
+  analysis,
+  canAnalyse,
+  pending,
+  onAnalyse,
+}: {
+  analysis: AnalysisRow | undefined;
+  canAnalyse: boolean;
+  pending: boolean;
+  onAnalyse: () => void;
+}) {
+  if (!analysis) {
+    return canAnalyse ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-1 text-xs"
+        disabled={pending}
+        onClick={onAnalyse}
+      >
+        <Brain className="mr-1 h-3.5 w-3.5" aria-hidden />
+        {pending ? 'Asking…' : 'Ask for an analysis'}
+      </Button>
+    ) : null;
+  }
+
+  if (!analysis.responseValid) {
+    return (
+      <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-300">
+        No analysis: {analysis.validationError}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/20 p-2 text-[11px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <Brain className="h-3 w-3 text-violet-400" aria-hidden />
+        <span className="font-medium">{analysis.action}</span>
+        <span className="text-muted-foreground">
+          confidence {analysis.confidence ? Number(analysis.confidence).toFixed(2) : '—'} ·{' '}
+          {analysis.riskLevel} risk
+          {analysis.regime && <> · {analysis.regime.toLowerCase().replace('_', ' ')}</>}
+        </span>
+        <span className="ml-auto text-muted-foreground">
+          {analysis.model}
+          {analysis.costUsd && <> · ${Number(analysis.costUsd).toFixed(4)}</>}
+        </span>
+      </div>
+      {analysis.rationale && <p className="mt-1">{analysis.rationale}</p>}
+      {analysis.invalidation && (
+        <p className="mt-1 text-muted-foreground">Wrong if: {analysis.invalidation}</p>
+      )}
+      {analysis.missingContext.length > 0 && (
+        <p className="mt-1 text-muted-foreground">Missing: {analysis.missingContext.join(', ')}</p>
+      )}
+      <p className="mt-1 text-[10px] text-amber-400">
+        Advice only. It cannot approve, size or place anything — this recommendation still waits for
+        you.
+      </p>
+    </div>
+  );
+}
+
+/** What the analysis layer has cost today, against its caps. */
+function SpendCard({ spend }: { spend: AnalysisSpend }) {
+  const spent = Number(spend.spentTodayUsd);
+  const budget = Number(spend.limits.dailyUsd);
+  const fraction = budget > 0 ? Math.min(1, spent / budget) : 0;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center gap-2">
+        <Brain className="h-3.5 w-3.5 text-violet-400" aria-hidden />
+        <CardTitle>Analysis spend today</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {!spend.providerConfigured ? (
+          <p className="text-xs text-amber-300">
+            No analysis provider is configured, so no analysis can run. Nothing here will invent
+            one: a fabricated opinion is worse than none, because you could not tell.
+          </p>
+        ) : (
+          <>
+            <p className="tabular-nums text-sm font-medium">
+              ${spent.toFixed(4)}{' '}
+              <span className="text-xs font-normal text-muted-foreground">
+                of ${budget.toFixed(2)}
+              </span>
+            </p>
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              role="img"
+              aria-label={`${(fraction * 100).toFixed(0)}% of today's analysis budget used`}
+            >
+              <div
+                className={cn(
+                  'h-full rounded-full',
+                  fraction > 0.8 ? 'bg-amber-400' : 'bg-sky-500',
+                )}
+                style={{ width: `${String(Math.max(1, fraction * 100))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {spend.callsLastHour} of {spend.limits.callsPerHour} calls this hour ·{' '}
+              {spend.providerName}
+            </p>
+          </>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          A call that would cross the budget or the hourly ceiling is refused before the money is
+          spent, and the refusal is recorded.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
