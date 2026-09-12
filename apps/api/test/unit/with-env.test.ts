@@ -1,0 +1,58 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * The `.env` loader that stops a new contributor being stranded.
+ *
+ * Nothing in this repository reads `.env` implicitly — the API takes its
+ * configuration from the environment — so `scripts/with-env.mjs` bridges the
+ * gap for local commands. The property worth pinning is the precedence: a
+ * variable already set must survive, because CI and the E2E suite pass their
+ * own DATABASE_URL and a loader that clobbered it would point the run at
+ * somebody's development database without saying so.
+ */
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
+
+const { parseEnvFile, envWithFile } = (await import(join(repoRoot, 'scripts/with-env.mjs'))) as {
+  parseEnvFile: (contents: string) => Record<string, string>;
+  envWithFile: (
+    base: Record<string, string | undefined>,
+    contents: string,
+  ) => Record<string, string | undefined>;
+};
+
+describe('parseEnvFile', () => {
+  it('reads plain pairs, quotes and an export prefix', () => {
+    const values = parseEnvFile(
+      ['A=1', 'B="two"', "C='three'", 'export D=4', '', '# a comment', 'E=has=equals'].join('\n'),
+    );
+    expect(values).toEqual({ A: '1', B: 'two', C: 'three', D: '4', E: 'has=equals' });
+  });
+
+  it('ignores a line with no key', () => {
+    expect(parseEnvFile('=novalue\nF=6')).toEqual({ F: '6' });
+  });
+});
+
+describe('envWithFile', () => {
+  it('fills gaps', () => {
+    expect(envWithFile({ KEEP: 'me' }, 'NEW=value').NEW).toBe('value');
+  });
+
+  it('never overrides a variable already set', () => {
+    const merged = envWithFile({ DATABASE_URL: 'from-ci' }, 'DATABASE_URL=from-dotenv');
+    expect(merged.DATABASE_URL).toBe('from-ci');
+  });
+});
+
+describe('the repository’s own .env.example', () => {
+  it('declares the three secrets setup generates', () => {
+    const example = readFileSync(join(repoRoot, '.env.example'), 'utf8');
+    for (const key of ['JWT_SECRET', 'COOKIE_SECRET', 'CREDENTIAL_ENCRYPTION_KEY']) {
+      expect(example).toContain(key);
+    }
+  });
+});

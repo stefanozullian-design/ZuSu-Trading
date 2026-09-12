@@ -1,10 +1,11 @@
 # ---------------------------------------------------------------------------
 # ZuSu Trading — local stack.
 #
-#   cp .env.example .env   (then fill in the three secrets)
-#   docker compose up --build
-#   docker compose exec api npx --workspace @zusu/api prisma migrate deploy
-#   docker compose exec api node -e "require('child_process')" # see README for seeding
+#   npm run setup          (writes .env with generated secrets)
+#   docker compose up --build -d
+#   docker compose exec api npm run db:deploy
+#   docker compose exec api npm run seed
+#   docker compose exec api npm run backfill:demo
 #
 # The web client is served on http://localhost:8080 and proxies /api to the API
 # container, so the browser sees a single origin.

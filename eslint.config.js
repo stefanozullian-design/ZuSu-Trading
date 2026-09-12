@@ -29,4 +29,11 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/*.test.tsx', '**/scripts/**', '**/prisma/seed.ts'],
     rules: { 'no-console': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   },
+  {
+    // Plain Node scripts: no TypeScript lib to declare the runtime's globals.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
+    },
+  },
 );

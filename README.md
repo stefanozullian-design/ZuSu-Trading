@@ -30,21 +30,32 @@ You need Node 22+, PostgreSQL 16 and (optionally) Redis.
 git clone <this repo> && cd ZuSu-Trading
 npm install
 
+npm run setup    # writes .env with generated secrets, then migrates, seeds and backfills
+npm run dev      # API on :4000, web client on :5173
+```
+
+`npm run setup` refuses to touch an existing `.env`, so it is safe to re-run.
+Point `DATABASE_URL` at your PostgreSQL first if it is not the default
+`postgresql://zusu:zusu@127.0.0.1:5432/zusu_trading`.
+
+<details>
+<summary>The same thing step by step, if you would rather see each part</summary>
+
+```bash
 cp .env.example .env
 # Generate the three secrets and paste them into .env:
 #   openssl rand -base64 48   # JWT_SECRET
 #   openssl rand -base64 48   # COOKIE_SECRET
 #   openssl rand -base64 32   # CREDENTIAL_ENCRYPTION_KEY
-# and point DATABASE_URL at your PostgreSQL.
 
 npm run build -w @zusu/shared   # the API and web client both import it
 npm run db:generate             # Prisma client
 npm run db:deploy               # apply migrations
 npm run seed                    # demo users, portfolio, positions, strategies
 npm run backfill:demo           # calendars, ~13,700 simulated candles, example scans
-
-npm run dev                     # API on :4000, web client on :5173
 ```
+
+</details>
 
 `backfill:demo` is what makes the **Market** page show something. It generates
 bars from the deterministic simulator and pushes them through the real quality
