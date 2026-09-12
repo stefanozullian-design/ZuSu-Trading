@@ -52,6 +52,18 @@ export interface IndicatorSnapshot {
   barsAvailable: number;
 }
 
+export interface IndicatorSeries {
+  length: number;
+  sma20: (Decimal | null)[];
+  sma50: (Decimal | null)[];
+  bollingerUpper: (Decimal | null)[];
+  bollingerLower: (Decimal | null)[];
+  rsi14: (Decimal | null)[];
+  macd: (Decimal | null)[];
+  macdSignal: (Decimal | null)[];
+  macdHistogram: (Decimal | null)[];
+}
+
 export class IndicatorService {
   constructor(private readonly db: PrismaClient) {}
 
@@ -114,6 +126,37 @@ export class IndicatorService {
   ): Promise<IndicatorSnapshot | null> {
     const candles = await this.loadCandles(symbol, timeframe, options);
     return this.snapshotFrom(symbol, timeframe, candles);
+  }
+
+  /**
+   * Full per-bar series, for charting.
+   *
+   * Distinct from `snapshot`, which is the newest bar only. Every array comes
+   * back the same length as the candles it was computed from, so a chart can
+   * index straight into it — and the nulls are warm-up, which a chart must draw
+   * as a break in the line rather than a drop to zero.
+   */
+  async series(
+    symbol: string,
+    timeframe: Timeframe,
+    options: { limit?: number } = {},
+  ): Promise<IndicatorSeries> {
+    const candles = await this.loadCandles(symbol, timeframe, options);
+    const prices = closes(candles);
+    const bands = bollinger(prices);
+    const macdPoints = macd(prices);
+
+    return {
+      length: candles.length,
+      sma20: sma(prices, 20),
+      sma50: sma(prices, 50),
+      bollingerUpper: bands.map((b) => b.upper),
+      bollingerLower: bands.map((b) => b.lower),
+      rsi14: rsi(prices, 14),
+      macd: macdPoints.map((p) => p.macd),
+      macdSignal: macdPoints.map((p) => p.signal),
+      macdHistogram: macdPoints.map((p) => p.histogram),
+    };
   }
 
   /** The same computation over candles the caller already holds. */

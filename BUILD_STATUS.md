@@ -32,17 +32,17 @@ Last updated: 2026-09-12
 | **API docs**             | OpenAPI generated from the same zod schemas the routes validate against (`docs/openapi.json`, Swagger UI at `/docs`)                                                                                                                                                      |
 | **Frontend**             | Login with MFA enrolment, dashboard (P&L, positions, risk monitor, kill switch, system health), audit view, mobile-specific layout, unmistakable environment banner                                                                                                       |
 | **Demo mode**            | Seed data: four users covering every role, a client, a $100,000 demo portfolio with positions and snapshot history, a watchlist, three preconfigured strategy definitions. No API credentials needed                                                                      |
-| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 403 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
+| **Infrastructure**       | Docker images for API and web, docker-compose stack, GitHub Actions running lint, format, typecheck, 424 tests, builds, a demo smoke test and `npm audit`                                                                                                                 |
 
 ### Test coverage
 
-403 tests, all passing.
+424 tests, all passing.
 
 | Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `apps/api` unit        | 236   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator |
-| `apps/api` integration | 130   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting                                                                                                                                                                   |
+| `apps/api` integration | 151   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads)                                                          |
 | `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## In progress
@@ -71,6 +71,15 @@ Blocking verdicts reach `TradingGate`, which distinguishes a feed-wide fault (a
 dead provider blocks every non-DEMO portfolio) from a per-symbol fault (a warning
 on the portfolio, blocking only for an order naming that symbol). DEMO
 portfolios are exempt: the simulator prices them, not the provider.
+
+**The Market page (`/market`) is where all of this became visible.** Phase 2 had
+been five commits of machinery with no way to look at it, which left no feedback
+loop at all. Read-only routes now expose instruments, candles, per-bar indicator
+series, the latest indicator snapshot, per-symbol tradability, the data-quality
+verdict and the calendar; the page renders them. `DemoFeed` backfills bars from
+the deterministic simulator through the **real** quality layer, so the pipeline
+is observable without a provider key — every row tagged `demo-simulator`, and
+the page says so in a banner rather than implying a live feed.
 
 `indicators.ts` computes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP, the
 stochastic oscillator and OBV locally in decimal, never fetched from a provider.

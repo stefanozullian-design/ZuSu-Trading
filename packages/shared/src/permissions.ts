@@ -22,6 +22,12 @@ export const Permission = {
   ORDER_READ: 'order:read',
   ORDER_WRITE: 'order:write',
   POSITION_READ: 'position:read',
+  /**
+   * Reading quotes, candles, indicators and the market calendar. Reference
+   * data rather than tenant data — it is not scoped to a client, so every
+   * authenticated role has it.
+   */
+  MARKET_DATA_READ: 'market_data:read',
   /** Reading configured risk limits. */
   RISK_READ: 'risk:read',
   /** Changing risk limits — deliberately withheld from MANAGER (spec §40). */
@@ -42,6 +48,7 @@ const VIEWER_PERMISSIONS: Permission[] = [
   Permission.PORTFOLIO_READ,
   Permission.POSITION_READ,
   Permission.PERFORMANCE_READ,
+  Permission.MARKET_DATA_READ,
 ];
 
 const CLIENT_PERMISSIONS: Permission[] = [

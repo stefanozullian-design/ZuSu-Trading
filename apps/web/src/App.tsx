@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, LogOut, ScrollText, Wifi, WifiOff } from 'lucide-react';
+import { Activity, CandlestickChart, LogOut, ScrollText, Wifi, WifiOff } from 'lucide-react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
@@ -9,6 +9,7 @@ import { useLiveEvents } from '@/hooks/useLiveEvents';
 import { AuditPage } from '@/pages/AuditPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
+import { MarketPage } from '@/pages/MarketPage';
 import { cn } from '@/lib/utils';
 import type { EnvironmentInfo } from '@/lib/types';
 
@@ -47,6 +48,13 @@ function Shell() {
 
           <nav className="flex items-center gap-1">
             <NavItem to="/" icon={<Activity className="h-4 w-4" aria-hidden />} label="Dashboard" />
+            {can('market_data:read') && (
+              <NavItem
+                to="/market"
+                icon={<CandlestickChart className="h-4 w-4" aria-hidden />}
+                label="Market"
+              />
+            )}
             {can('audit:read') && (
               <NavItem
                 to="/audit"
@@ -80,6 +88,10 @@ function Shell() {
 
       <Routes>
         <Route path="/" element={<DashboardPage />} />
+        <Route
+          path="/market"
+          element={can('market_data:read') ? <MarketPage /> : <Navigate to="/" />}
+        />
         <Route path="/audit" element={can('audit:read') ? <AuditPage /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

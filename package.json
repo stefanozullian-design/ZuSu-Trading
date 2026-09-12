@@ -22,6 +22,7 @@
     "test": "npm run test -w @zusu/shared && npm run test -w @zusu/api && npm run test -w @zusu/web",
     "test:unit": "npm run test:unit -w @zusu/api",
     "test:integration": "npm run test:integration -w @zusu/api",
+    "backfill:demo": "npm run backfill:demo -w @zusu/api",
     "db:generate": "npm run db:generate -w @zusu/api",
     "db:migrate": "npm run db:migrate -w @zusu/api",
     "db:deploy": "npm run db:deploy -w @zusu/api",

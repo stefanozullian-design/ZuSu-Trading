@@ -4,10 +4,12 @@ A day-trading automation platform built so that **AI can recommend a trade but c
 never authorise one**. Every order passes a deterministic risk engine, every action
 is auditable, and the system fails safe when a dependency disappears.
 
-> **Phase 1 (Foundation) is complete.** Identity, portfolios, the demo broker, the
-> trading gate, the kill switch and the audit log all work end to end. **No route
-> in this API can place an order** — orders may only ever be created behind the
-> risk engine (Phase 7) and order manager (Phase 8). See
+> **Phase 1 complete; Phase 2 (market data) in progress.** Identity, portfolios,
+> the demo broker, the trading gate, the kill switch and the audit log work end
+> to end. Market data adds the provider adapter, a data-quality layer, the market
+> calendar and a local indicator engine, all visible on the **Market** page.
+> **No route in this API can place an order** — orders may only ever be created
+> behind the risk engine (Phase 7) and order manager (Phase 8). See
 > [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -31,9 +33,16 @@ npm run build -w @zusu/shared   # the API and web client both import it
 npm run db:generate             # Prisma client
 npm run db:deploy               # apply migrations
 npm run seed                    # demo users, portfolio, positions, strategies
+npm run backfill:demo           # market calendars + ~13,000 simulated candles
 
 npm run dev                     # API on :4000, web client on :5173
 ```
+
+`backfill:demo` is what makes the **Market** page show something. It generates
+bars from the deterministic simulator and pushes them through the real quality
+layer, so inspection, storage and the indicator engine all run the path they
+will run on live data. Every row it writes is tagged `demo-simulator`, and the
+page says so at the top — nothing here can be mistaken for a real feed.
 
 Open <http://localhost:5173> and sign in with any seeded account:
 
@@ -47,6 +56,18 @@ Open <http://localhost:5173> and sign in with any seeded account:
 The whole application is explorable in DEMO mode with **no API credentials of any
 kind**: market data comes from a deterministic simulator and orders would go to a
 simulated venue.
+
+### The Market page
+
+`/market` is where Phase 2 is visible: a price chart with moving averages and a
+Bollinger envelope, RSI and MACD panels, every indicator value as of the newest
+bar, the market session and per-symbol tradability, and what the data-quality
+layer currently thinks of the feed. An indicator without enough history shows as
+`—  needs 50`, never as zero.
+
+To point it at real data instead of the simulator, set `MARKET_DATA_PROVIDER=MASSIVE`
+and `MASSIVE_API_KEY` in `.env`. Massive.com is the former Polygon.io; its free
+tier is end-of-day only, so intraday needs a paid plan.
 
 API docs are at <http://localhost:4000/docs>.
 

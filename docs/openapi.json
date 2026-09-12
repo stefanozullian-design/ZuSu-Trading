@@ -1605,6 +1605,747 @@
         }
       }
     },
+    "/api/market-data/instruments": {
+      "get": {
+        "summary": "Instruments with stored market data",
+        "tags": ["market-data"],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "isDelayed": {
+                      "type": "boolean",
+                      "nullable": true
+                    },
+                    "instruments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "assetClass": {
+                            "type": "string"
+                          },
+                          "exchange": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "isTradable": {
+                            "type": "boolean"
+                          },
+                          "barCount": {
+                            "type": "integer"
+                          },
+                          "lastClose": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "lastBarAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "symbol",
+                          "name",
+                          "assetClass",
+                          "exchange",
+                          "isTradable",
+                          "barCount",
+                          "lastClose",
+                          "lastBarAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["provider", "isDelayed", "instruments"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/{symbol}/candles": {
+      "get": {
+        "summary": "Stored candles for a symbol, oldest first",
+        "tags": ["market-data"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["1m", "5m", "15m", "1h", "1d"],
+              "default": "5m"
+            },
+            "in": "query",
+            "name": "timeframe",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000,
+              "default": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "candles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "openTime": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "open": {
+                            "type": "string"
+                          },
+                          "high": {
+                            "type": "string"
+                          },
+                          "low": {
+                            "type": "string"
+                          },
+                          "close": {
+                            "type": "string"
+                          },
+                          "volume": {
+                            "type": "string"
+                          },
+                          "vwap": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "provider": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "openTime",
+                          "open",
+                          "high",
+                          "low",
+                          "close",
+                          "volume",
+                          "vwap",
+                          "provider"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["symbol", "timeframe", "candles"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/{symbol}/indicators": {
+      "get": {
+        "summary": "Every indicator as of the newest stored bar",
+        "tags": ["market-data"],
+        "description": "A null value means the stored history is too short to define that indicator, never zero. `barsAvailable` says how short.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["1m", "5m", "15m", "1h", "1d"],
+              "default": "5m"
+            },
+            "in": "query",
+            "name": "timeframe",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000,
+              "default": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "asOf": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "close": {
+                      "type": "string"
+                    },
+                    "barsAvailable": {
+                      "type": "integer"
+                    },
+                    "sma20": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "sma50": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "ema12": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "ema26": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "rsi14": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "macd": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "macdSignal": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "macdHistogram": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "bollingerUpper": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "bollingerMiddle": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "bollingerLower": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "atr14": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "vwap": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "stochasticK": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "stochasticD": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "obv": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "symbol",
+                    "timeframe",
+                    "asOf",
+                    "close",
+                    "barsAvailable",
+                    "sma20",
+                    "sma50",
+                    "ema12",
+                    "ema26",
+                    "rsi14",
+                    "macd",
+                    "macdSignal",
+                    "macdHistogram",
+                    "bollingerUpper",
+                    "bollingerMiddle",
+                    "bollingerLower",
+                    "atr14",
+                    "vwap",
+                    "stochasticK",
+                    "stochasticD",
+                    "obv"
+                  ],
+                  "additionalProperties": false,
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/{symbol}/indicator-series": {
+      "get": {
+        "summary": "Indicator values for every bar, aligned to the candle series",
+        "tags": ["market-data"],
+        "description": "Arrays are the same length as the candle array from /candles, so index i is the value as of bar i. Nulls are warm-up, never zero.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["1m", "5m", "15m", "1h", "1d"],
+              "default": "5m"
+            },
+            "in": "query",
+            "name": "timeframe",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000,
+              "default": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "timeframe": {
+                      "type": "string"
+                    },
+                    "length": {
+                      "type": "integer"
+                    },
+                    "sma20": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "sma50": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "bollingerUpper": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "bollingerLower": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "rsi14": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "macd": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "macdSignal": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "macdHistogram": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    }
+                  },
+                  "required": [
+                    "symbol",
+                    "timeframe",
+                    "length",
+                    "sma20",
+                    "sma50",
+                    "bollingerUpper",
+                    "bollingerLower",
+                    "rsi14",
+                    "macd",
+                    "macdSignal",
+                    "macdHistogram"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/{symbol}/tradable": {
+      "get": {
+        "summary": "Whether this symbol may be traded right now, and why not",
+        "tags": ["market-data"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "symbol",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "tradable": {
+                      "type": "boolean"
+                    },
+                    "session": {
+                      "type": "string"
+                    },
+                    "marketCode": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["symbol", "tradable", "session", "marketCode", "reason"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/quality": {
+      "get": {
+        "summary": "Open data-quality events, and whether they block trading",
+        "tags": ["market-data"],
+        "description": "Feed-wide faults block every non-DEMO portfolio. Per-symbol faults block only orders naming that symbol.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "feedWide": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "issue": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "detectedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["symbol", "issue", "detail", "detectedAt"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "bySymbol": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "issue": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "detectedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["symbol", "issue", "detail", "detectedAt"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "recent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "issue": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "detectedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "resolvedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "symbol",
+                          "issue",
+                          "detail",
+                          "blocking",
+                          "detectedAt",
+                          "resolvedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["ok", "feedWide", "bySymbol", "recent"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-data/calendar/{marketCode}": {
+      "get": {
+        "summary": "Session state for a market, and the days around today",
+        "tags": ["market-data"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12
+            },
+            "in": "path",
+            "name": "marketCode",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "marketCode": {
+                      "type": "string"
+                    },
+                    "session": {
+                      "type": "string"
+                    },
+                    "asOf": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "days": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string"
+                          },
+                          "isTradingDay": {
+                            "type": "boolean"
+                          },
+                          "regularOpen": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "regularClose": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "isEarlyClose": {
+                            "type": "boolean"
+                          },
+                          "holidayName": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "date",
+                          "isTradingDay",
+                          "regularOpen",
+                          "regularClose",
+                          "isEarlyClose",
+                          "holidayName"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "openHalts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "haltedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["symbol", "reason", "haltedAt"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["marketCode", "session", "asOf", "days", "openHalts"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/risk/portfolios/{id}/gate": {
       "get": {
         "summary": "Whether this portfolio may trade right now, and what is blocking it",

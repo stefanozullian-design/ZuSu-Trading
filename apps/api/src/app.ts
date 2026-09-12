@@ -17,6 +17,7 @@ import { verifyAccessToken } from './modules/auth/tokens.js';
 import { registerBrokerRoutes } from './modules/broker/broker.routes.js';
 import { registerClientRoutes } from './modules/clients/client.routes.js';
 import { registerSystemRoutes } from './modules/health/health.routes.js';
+import { registerMarketDataRoutes } from './modules/market-data/market-data.routes.js';
 import { registerPortfolioRoutes } from './modules/portfolios/portfolio.routes.js';
 import { registerRiskRoutes } from './modules/risk/risk.routes.js';
 import { authPlugin } from './plugins/auth.js';
@@ -93,6 +94,9 @@ export async function buildApp(options: { container?: AppContainer } = {}): Prom
   });
   await app.register(async (api) => registerBrokerRoutes(api, container), {
     prefix: '/api/broker',
+  });
+  await app.register(async (api) => registerMarketDataRoutes(api, container), {
+    prefix: '/api/market-data',
   });
   await app.register(async (api) => registerRiskRoutes(api, container), { prefix: '/api/risk' });
   await app.register(async (api) => registerAuditRoutes(api, container), { prefix: '/api/audit' });

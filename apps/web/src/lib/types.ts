@@ -136,3 +136,105 @@ export interface MfaEnrolment {
   otpauthUrl: string;
   qrDataUrl: string;
 }
+
+export interface MarketInstrument {
+  symbol: string;
+  name: string | null;
+  assetClass: string;
+  exchange: string | null;
+  isTradable: boolean;
+  barCount: number;
+  lastClose: string | null;
+  lastBarAt: string | null;
+}
+
+export interface InstrumentList {
+  provider: string;
+  isDelayed: boolean | null;
+  instruments: MarketInstrument[];
+}
+
+export interface MarketCandle {
+  openTime: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+  vwap: string | null;
+  provider: string;
+}
+
+export interface CandleSeries {
+  symbol: string;
+  timeframe: string;
+  candles: MarketCandle[];
+}
+
+export interface IndicatorSnapshot {
+  symbol: string;
+  timeframe: string;
+  asOf: string;
+  close: string;
+  barsAvailable: number;
+  sma20: string | null;
+  sma50: string | null;
+  ema12: string | null;
+  ema26: string | null;
+  rsi14: string | null;
+  macd: string | null;
+  macdSignal: string | null;
+  macdHistogram: string | null;
+  bollingerUpper: string | null;
+  bollingerMiddle: string | null;
+  bollingerLower: string | null;
+  atr14: string | null;
+  vwap: string | null;
+  stochasticK: string | null;
+  stochasticD: string | null;
+  obv: string;
+}
+
+export interface TradabilityVerdict {
+  symbol: string;
+  tradable: boolean;
+  session: string;
+  marketCode: string;
+  reason: string | null;
+}
+
+export interface QualityEvent {
+  symbol: string | null;
+  issue: string;
+  detail: string;
+  detectedAt: string;
+}
+
+export interface QualityReport {
+  ok: boolean;
+  feedWide: QualityEvent[];
+  bySymbol: QualityEvent[];
+  recent: {
+    symbol: string | null;
+    issue: string;
+    detail: string;
+    blocking: boolean;
+    detectedAt: string;
+    resolvedAt: string | null;
+  }[];
+}
+
+export interface CalendarView {
+  marketCode: string;
+  session: string;
+  asOf: string;
+  days: {
+    date: string;
+    isTradingDay: boolean;
+    regularOpen: string | null;
+    regularClose: string | null;
+    isEarlyClose: boolean;
+    holidayName: string | null;
+  }[];
+  openHalts: { symbol: string; reason: string; haltedAt: string }[];
+}
