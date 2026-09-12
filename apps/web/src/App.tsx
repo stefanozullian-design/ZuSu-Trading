@@ -6,6 +6,7 @@ import {
   Radar,
   ScrollText,
   LineChart,
+  ShieldAlert,
   ShieldCheck,
   TestTubeDiagonal,
   Waypoints,
@@ -26,6 +27,7 @@ import { ScannerPage } from '@/pages/ScannerPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
 import { PerformancePage } from '@/pages/PerformancePage';
+import { RiskPage } from '@/pages/RiskPage';
 import { TradingPage } from '@/pages/TradingPage';
 import { cn } from '@/lib/utils';
 import type { EnvironmentInfo } from '@/lib/types';
@@ -100,6 +102,13 @@ function Shell() {
                 label="Performance"
               />
             )}
+            {can('risk:read') && (
+              <NavItem
+                to="/risk"
+                icon={<ShieldAlert className="h-4 w-4" aria-hidden />}
+                label="Risk"
+              />
+            )}
             {can('backtest:read') && (
               <NavItem
                 to="/backtests"
@@ -160,6 +169,7 @@ function Shell() {
           path="/performance"
           element={can('performance:read') ? <PerformancePage /> : <Navigate to="/" />}
         />
+        <Route path="/risk" element={can('risk:read') ? <RiskPage /> : <Navigate to="/" />} />
         <Route
           path="/backtests"
           element={can('backtest:read') ? <BacktestPage /> : <Navigate to="/" />}

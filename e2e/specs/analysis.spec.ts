@@ -13,7 +13,7 @@ import { signIn } from './helpers';
 test.describe('without a provider', () => {
   test('says so on the page rather than showing an empty panel', async ({ page }) => {
     await signIn(page, 'manager');
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
 
     await expect(page.getByRole('heading', { name: /analysis spend today/i })).toBeVisible();
     await expect(page.getByText(/no analysis provider is configured/i)).toBeVisible();
@@ -136,7 +136,7 @@ test.describe('notifications', () => {
     const count = ((await evaluated.json()).created as unknown[]).length;
     test.skip(count === 0, 'the simulator produced no signal in this window');
 
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
     await expect(page.getByText(/waiting for a decision/).first()).toBeVisible();
 
     const dismiss = page.getByRole('button', { name: /^Dismiss / }).first();

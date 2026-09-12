@@ -1,7 +1,8 @@
 # Build status
 
-**Current phase: 6 — Claude analysis. Complete, unverified against the live
-API.** Phase 7 (the risk engine and scheduler) is next.
+**Current phase: 7 — Risk engine and scheduler. Complete.** Phase 8 (the live
+broker adapter) is next, and is blocked on confirming Robinhood's API
+capabilities.
 **Live trading: not possible.** Orders exist now, but only in the DEMO and PAPER
 environments — the live adapter arrives in Phase 8 and `ALLOW_LIVE_TRADING`
 defaults to false. No order can be created without a person: the only path from
@@ -319,20 +320,72 @@ trains people to ignore the one that matters.
 so the handler asked for a principal that had never been loaded and every call
 401'd. The fix is one line; the test that pins it is the more useful artefact.
 
+### Phase 7 — Risk engine and scheduler
+
+| Step                | State                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1. Position sizing  | Done — fixed-fractional from the stop distance, with an ATR floor and three refusals.                     |
+| 2. Portfolio limits | Done — exposure (portfolio, sector, symbol), counts, daily and weekly loss, consecutive losses, drawdown. |
+| 3. Correlation      | Done — measured on stored returns, not inferred from sector; unmeasurable blocks.                         |
+| 4. Circuit breaker  | Done — drawdown halts a portfolio automatically; nothing un-halts one.                                    |
+| 5. Scheduler        | Done — six jobs, none of which can approve or place an order.                                             |
+| 6. The Risk page    | Done — `/risk`, a sizing calculator and every check with its numbers.                                     |
+
+**A refusal has to be actionable.** Every check carries its limit name, the
+limit value and the actual value, so the page can say "sector exposure
+exceeded: 42.76 against a limit of 30.00 percent of equity in Technology". The
+generic "risk limit exceeded" that most systems produce is a refusal nobody can
+act on, and it is the thing this module was written to avoid.
+
+**A check that cannot be evaluated blocks.** A portfolio with no active limits,
+an instrument with no sector recorded, a symbol with too little history to
+correlate — each refuses rather than passing. "We could not check" is not "it is
+fine", and the one place that distinction gets quietly lost is a risk engine.
+
+**Sizing follows the stop, or refuses.** Fixed-fractional risk: 1% of equity
+divided by the distance to the stop, floored at half an ATR so a stop inside the
+symbol's own noise cannot produce an enormous position, capped by notional and
+by cash, rounded down to whole shares. Without a stop it refuses — falling back
+to a notional cap would change the method from risk-based to size-based while
+still reporting a risk figure. A stop on the wrong side of the entry is refused
+rather than flipped: that is a typo or a bug, not a trade. **Fractional Kelly is
+deliberately not implemented**: it needs an edge estimate this platform does not
+have, and sizing from a fabricated win rate is worse than sizing simply.
+
+**The breaker halts and never releases.** Drawdown past the configured limit
+halts the portfolio and writes a `KILL_SWITCH_AUTOMATIC` risk event saying a
+person must release it. There is no automatic un-halt anywhere in the codebase,
+and a test asserts that equity recovering does not resume trading: a breaker
+that resets itself is one that trades through the thing it was built to stop.
+
+**The scheduler can stop trading and cannot start any.** Six jobs — calendar
+sync, health persistence, order polling, live-strategy evaluation, daily
+snapshots, drawdown breakers. The evaluation job produces recommendations at
+CREATED, which then wait for a person exactly as a hand-triggered one's would.
+An integration test runs every job twice and asserts that no order, execution or
+position exists afterwards. Jobs never overlap themselves (a tick arriving while
+the previous is running is skipped and counted), a failing job is recorded and
+re-armed rather than killing the scheduler, and every job's last run, outcome,
+error and skip count is readable.
+
+**`LIMITS_NOT_YET_ENFORCED` is now empty**, three phases after it was
+introduced. The constant stays, because a limit that stops being enforced
+belongs in a named list rather than nowhere.
+
 ### Test coverage
 
-739 unit and integration tests plus 66 end-to-end specs, all passing.
+823 unit and integration tests plus 71 end-to-end specs, all passing.
 
 | Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `apps/api` unit        | 384   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
-| `apps/api` integration | 355   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
+| `apps/api` unit        | 398   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
+| `apps/api` integration | 388   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
 | `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### End-to-end coverage
 
-66 Playwright specs drive a real browser against a real API and database. They
+71 Playwright specs drive a real browser against a real API and database. They
 exist for what the faster suites structurally cannot check: that the pieces are
 wired to each other, and that the honesty rules the backend enforces survive to
 the screen — a null indicator rendered as `— needs 50` rather than `0`, an
@@ -359,7 +412,8 @@ accounting for every symbol it looked at, a backtest that arrives with its
 modelling assumptions and its gross figure beside its net one, an approval queue
 with no "approve all" control anywhere on it, a rejection that will not submit
 without a reason, both return measures on screen together, a platform that
-says it has no analysis provider rather than showing an empty panel, and the
+says it has no analysis provider rather than showing an empty panel, a sizing
+calculator that refuses without a stop and names the limit it breached, and the
 kill switch including the API refusing a manager's release.
 
 ## Blocked
@@ -447,8 +501,7 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 6 — Claude analysis. Complete, unverified against the live API.** Six
-carried items remain:
+**Phase 7 — Risk engine and scheduler. Complete.** Two carried items remain:
 
 0. **Verify the Anthropic adapter against the real API.** There is no
    `ANTHROPIC_API_KEY` on this deployment, so the request shape, the error
@@ -456,24 +509,14 @@ carried items remain:
    tested against a fake transport. Until a key exists this is the one part of
    the platform whose external contract is unconfirmed.
 
-1. Schedule the calendar sync. Rows are generated on demand today; a deployment
-   needs `MarketCalendarService.sync` run ahead of each period. The scheduler
-   arrives in Phase 7, so until then it is a manual call.
-2. Schedule strategy evaluation. `SignalService.evaluateAllLive` exists and is
-   called by nothing on a timer; a live strategy is evaluated when someone asks
-   for it. The scheduler arrives in Phase 7.
-3. Schedule the daily snapshot. `PerformanceService.writeSnapshot` is called on
-   demand and from the Performance page; the daily timer arrives with the
-   scheduler. A report says how many snapshots it had, so a gap is visible
-   rather than smoothed over.
-4. Poll open orders. An order's fills are applied when somebody syncs it or
-   reloads the page; a background poller belongs with the scheduler. Nothing is
-   lost in the meantime — ingestion is idempotent, so a late sync applies
-   exactly what a timely one would have.
-5. Run backtests in the background. A run over a few thousand bars takes
+1. Run backtests in the background. A run over a few thousand bars takes
    milliseconds, so it happens inline; a window of years will need a queue.
+2. Scheduler leader election, before running more than one API replica.
 
-Phase 6's tests pass, so **Phase 7 — Risk** may begin: position sizing, the
-portfolio, sector and correlation limits that `LIMITS_NOT_YET_ENFORCED` names,
-drawdown-triggered circuit breakers, and the scheduler that four of the items
-above are waiting for.
+Phase 7's tests pass, so **Phase 8 — Broker** may begin — but it is **blocked**
+on an external answer, and the block is real rather than a formality. A live
+adapter cannot be written without knowing whether Robinhood's API exposes client
+order IDs (the platform's idempotency depends on them), execution-level fills
+(partial fills and slippage measurement depend on them) and defined-risk
+multi-leg options orders. Writing an adapter against a guess and finding out in
+production is the failure this phase order exists to prevent.

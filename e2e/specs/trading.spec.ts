@@ -65,15 +65,24 @@ async function seedSignals(page: import('@playwright/test').Page): Promise<numbe
 test.describe('the approval queue', () => {
   test('a signal waits for a person, and the page says so', async ({ page }) => {
     await signIn(page, 'manager');
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
 
-    // With nothing waiting, the page states that nothing sweeps the queue.
-    await expect(page.getByText(/nothing sweeps this queue automatically/i)).toBeVisible();
+    // The queue's heading counts what is owed a decision. Whether it is empty
+    // depends on what earlier specs produced; that it waits does not.
+    await expect(page.getByRole('heading', { name: /awaiting a decision/i })).toBeVisible();
+    const waiting = await page.getByRole('button', { name: 'Approve', exact: true }).count();
+    if (waiting === 0) {
+      await expect(page.getByText(/nothing sweeps this queue automatically/i)).toBeVisible();
+    } else {
+      // Each card explains what approving does, and none of them offers a way
+      // to skip the deciding.
+      await expect(page.getByText(/Approving sizes the order/i).first()).toBeVisible();
+    }
   });
 
   test('offers no control that approves without a person', async ({ page }) => {
     await signIn(page, 'manager');
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
 
     for (const label of [/approve all/i, /auto.?approve/i, /enable automation/i]) {
       await expect(page.getByRole('button', { name: label })).toHaveCount(0);
@@ -86,7 +95,7 @@ test.describe('the approval queue', () => {
     const count = await seedSignals(page);
     test.skip(count === 0, 'the simulator produced no signal in this window');
 
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
     await expect(page.getByRole('heading', { name: /awaiting a decision/i })).toBeVisible();
 
     await page
@@ -108,7 +117,7 @@ test.describe('the approval queue', () => {
     const count = await seedSignals(page);
     test.skip(count === 0, 'the simulator produced no signal in this window');
 
-    await page.getByRole('link', { name: /trading/i }).click();
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
     const reject = page.getByRole('button', { name: 'Reject', exact: true }).first();
 
     // Disabled until a reason is typed: a rejection is evidence about a
@@ -123,7 +132,7 @@ test.describe('the approval queue', () => {
 
   test('a viewer cannot reach the page', async ({ page }) => {
     await signIn(page, 'viewer');
-    await expect(page.getByRole('link', { name: /trading/i })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Trading', exact: true })).toHaveCount(0);
 
     await page.goto('/trading');
     await expect(page.getByRole('heading', { name: /open positions/i })).toBeVisible();

@@ -87,10 +87,7 @@ export function DashboardPage() {
           <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
             <div className="space-y-4 lg:col-span-2">
               <PositionsTable portfolioId={selected.id} />
-              <PhaseNotice title="Pending approvals" phase="Phase 9">
-                Manual approval of orders opens when the risk engine and order manager are in place.
-                Until then no order can be created by any route in this API.
-              </PhaseNotice>
+              <ApprovalsPanel portfolioId={selected.id} />
             </div>
 
             <div className="space-y-4 lg:sticky lg:top-16">
@@ -101,22 +98,110 @@ export function DashboardPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <PhaseNotice title="Active signals" phase="Phase 3">
-              Signals appear here once the strategy and signal engines are built. Nothing is
-              generating signals yet, so this panel is empty by design rather than by accident.
-            </PhaseNotice>
-            <PhaseNotice title="Market regime" phase="Phase 6">
-              Regime classification (trending, range-bound, volatility state) is computed once the
-              indicator and AI engines land.
-            </PhaseNotice>
-            <PhaseNotice title="Strategy performance" phase="Phase 4">
-              Backtest, paper and live performance are compared side by side once the backtesting
-              engine exists — reporting simulated results as realised performance would be
-              misleading.
+            <RegimePanel />
+            <PhaseNotice title="Live trading" phase="Phase 9">
+              Orders reach a simulated venue in DEMO and PAPER. A live broker adapter arrives in
+              Phase 8, and switching a portfolio to it is a deliberate act by a person — never a
+              setting that flips itself.
             </PhaseNotice>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * What is waiting for a person right now.
+ *
+ * The dashboard's job is to answer "is there anything for me to do", and the
+ * only thing this platform ever needs a person for is a decision. So this
+ * panel counts recommendations rather than summarising them: the deciding
+ * happens on the Trading page, with the reasoning next to each one.
+ */
+function ApprovalsPanel({ portfolioId }: { portfolioId: string }) {
+  const { data } = useQuery({
+    queryKey: ['signals', portfolioId],
+    queryFn: () =>
+      api<{ signals: { id: string; status: string; symbol: string; direction: string }[] }>(
+        `/api/strategies/signals?portfolioId=${portfolioId}&limit=100`,
+      ),
+    refetchInterval: 30_000,
+  });
+
+  const waiting = (data?.signals ?? []).filter(
+    (signal) => signal.status === 'CREATED' || signal.status === 'PENDING_APPROVAL',
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Waiting for a decision</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {waiting.length === 0 ? (
+          <p className="text-muted-foreground">
+            Nothing waiting. A recommendation stays here until somebody approves or rejects it —
+            nothing sweeps this queue automatically.
+          </p>
+        ) : (
+          <>
+            <p className="text-2xl font-semibold tabular-nums">{waiting.length}</p>
+            <p className="text-xs text-muted-foreground">
+              {waiting
+                .slice(0, 6)
+                .map((signal) => `${signal.symbol} ${signal.direction}`)
+                .join(', ')}
+              {waiting.length > 6 && ` and ${String(waiting.length - 6)} more`}
+            </p>
+          </>
+        )}
+        <a className="inline-block text-xs text-sky-400 hover:underline" href="/trading">
+          Open the trading page →
+        </a>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The most recent market-regime classification.
+ *
+ * Absent rather than NEUTRAL when nothing has classified one: a regime is a
+ * claim about the market, and "we have not looked" is a different statement
+ * from "it is neutral".
+ */
+function RegimePanel() {
+  const { data } = useQuery({
+    queryKey: ['regime'],
+    queryFn: () =>
+      api<{
+        regime: { regime: string; confidence: string; detectedAt: string } | null;
+      }>('/api/analysis/regime'),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Market regime</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        {data?.regime ? (
+          <>
+            <p className="text-lg font-medium">{data.regime.regime.replace('_', ' ')}</p>
+            <p className="text-xs text-muted-foreground">
+              confidence {Number(data.regime.confidence).toFixed(2)} · classified{' '}
+              {new Date(data.regime.detectedAt).toLocaleString()}
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Nothing has classified one. Regime comes from the analysis layer, which needs an API key
+            this deployment does not have — so the panel says nothing rather than guessing
+            &ldquo;neutral&rdquo;.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

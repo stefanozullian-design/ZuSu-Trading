@@ -14,6 +14,13 @@ export interface ServiceProbe {
   detail: string | null;
 }
 
+/** The subset of a scheduler job's state that health cares about. */
+export interface SchedulerJobState {
+  name: string;
+  lastRunAt: Date | null;
+  lastError: string | null;
+}
+
 export interface WebSocketStatusProvider {
   isRunning(): boolean;
   connectionCount(): number;
@@ -31,11 +38,24 @@ export class HealthService {
   private readonly probeBroker = new DemoBroker({ accountId: 'DEMO-HEALTH' });
   private lastSnapshot: SystemHealth | null = null;
 
+  /**
+   * The last three are functions rather than services so this stays free of
+   * import cycles: health is read by the scheduler, which is built from the
+   * container that builds health.
+   */
   constructor(
     private readonly db: PrismaClient,
     private readonly ws?: WebSocketStatusProvider,
     private readonly marketData?: MarketDataProviderRegistry,
+    private readonly analysisConfigured?: () => boolean,
+    private schedulerStates?: () => SchedulerJobState[],
+    private readonly brokerSupportedFor?: (environment: TradingEnvironment) => boolean,
   ) {}
+
+  /** Attached after construction, because the scheduler is built later. */
+  attachScheduler(states: () => SchedulerJobState[]): void {
+    this.schedulerStates = states;
+  }
 
   private breaker(service: ServiceName): CircuitBreaker {
     let breaker = this.breakers.get(service);
@@ -55,10 +75,8 @@ export class HealthService {
     services.push(await this.checkBroker(cfg.DEFAULT_ENVIRONMENT));
     services.push(await this.checkMarketData(cfg.DEFAULT_ENVIRONMENT));
     services.push(this.checkWebSocket());
-    services.push(this.notYetImplemented(ServiceName.CLAUDE, 'AI analysis arrives in Phase 6'));
-    services.push(
-      this.notYetImplemented(ServiceName.SCHEDULER, 'Scan scheduler arrives in Phase 7'),
-    );
+    services.push(this.checkAnalysis());
+    services.push(this.checkScheduler());
     services.push(
       this.notYetImplemented(
         ServiceName.RECONCILIATION,
@@ -66,7 +84,12 @@ export class HealthService {
       ),
     );
     services.push(
-      this.notYetImplemented(ServiceName.NOTIFICATIONS, 'Notification delivery arrives in Phase 6'),
+      this.probe(
+        ServiceName.NOTIFICATIONS,
+        ServiceStatus.HEALTHY,
+        null,
+        'in-app notifications only; push, email and SMS have no transport and are refused',
+      ),
     );
 
     const enabled = services.filter((s) => s.status !== ServiceStatus.DISABLED);
@@ -79,14 +102,77 @@ export class HealthService {
     const snapshot: SystemHealth = {
       environment: cfg.DEFAULT_ENVIRONMENT,
       overall,
-      // Phase 1 exposes no order-submission path at all, so nothing can trade
-      // yet regardless of dependency health. Reported honestly rather than green.
-      tradingEnabled: false,
+      // True when an order could actually be placed in this environment: a
+      // broker adapter exists for it and no dependency it needs is down. It
+      // says nothing about whether a person should — the approval gate is
+      // still a person's, and a halted portfolio still refuses.
+      tradingEnabled:
+        overall !== ServiceStatus.DOWN && this.brokerSupported(cfg.DEFAULT_ENVIRONMENT),
       services,
       checkedAt: new Date().toISOString(),
     };
     this.lastSnapshot = snapshot;
     return snapshot;
+  }
+
+  /**
+   * Whether the analysis provider can be called at all.
+   *
+   * Unconfigured is DISABLED rather than DOWN: a platform with no API key is
+   * in a normal state, not a broken one, and colouring it red would train
+   * people to ignore the colour.
+   */
+  private checkAnalysis(): ServiceProbe {
+    const configured = this.analysisConfigured?.() ?? false;
+    return configured
+      ? this.probe(ServiceName.CLAUDE, ServiceStatus.HEALTHY, null, 'provider configured')
+      : this.probe(
+          ServiceName.CLAUDE,
+          ServiceStatus.DISABLED,
+          null,
+          'no ANTHROPIC_API_KEY, so no analysis can run; refusals are recorded',
+        );
+  }
+
+  /**
+   * Whether the scheduler's jobs are running and succeeding.
+   *
+   * A job that has failed more often than it has succeeded is DEGRADED rather
+   * than healthy, because "the scheduler is up" and "the snapshots are being
+   * written" are different questions.
+   */
+  private checkScheduler(): ServiceProbe {
+    const states = this.schedulerStates?.() ?? null;
+    if (!states || states.length === 0) {
+      return this.probe(
+        ServiceName.SCHEDULER,
+        ServiceStatus.DISABLED,
+        null,
+        'no scheduler is attached to this process',
+      );
+    }
+
+    const failing = states.filter((state) => state.lastError !== null);
+    const neverRun = states.filter((state) => state.lastRunAt === null);
+    if (failing.length > 0) {
+      return this.probe(
+        ServiceName.SCHEDULER,
+        ServiceStatus.DEGRADED,
+        null,
+        `${String(failing.length)} of ${String(states.length)} jobs failed on their last run: ` +
+          failing.map((state) => state.name).join(', '),
+      );
+    }
+    return this.probe(
+      ServiceName.SCHEDULER,
+      ServiceStatus.HEALTHY,
+      null,
+      `${String(states.length - neverRun.length)} of ${String(states.length)} jobs have run`,
+    );
+  }
+
+  private brokerSupported(environment: TradingEnvironment): boolean {
+    return this.brokerSupportedFor?.(environment) ?? false;
   }
 
   lastKnown(): SystemHealth | null {

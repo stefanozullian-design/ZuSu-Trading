@@ -18,6 +18,7 @@ import { AnthropicProvider, UnconfiguredProvider } from './modules/ai/anthropic-
 import { BacktestService } from './modules/backtest/backtest.service.js';
 import { JournalService } from './modules/journal/journal.service.js';
 import { NotificationService } from './modules/notifications/notification.service.js';
+import { RiskEngine } from './modules/risk/risk-engine.js';
 import { OrderService } from './modules/orders/order.service.js';
 import { PerformanceService } from './modules/performance/performance.service.js';
 import { SignalService } from './modules/strategies/signal.service.js';
@@ -60,6 +61,7 @@ export interface AppContainer {
   journal: JournalService;
   analysis: AnalysisService;
   notifications: NotificationService;
+  risk: RiskEngine;
   ws: WebSocketGateway;
 }
 
@@ -73,7 +75,15 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const brokers = new BrokerRegistry({ seed: config().DEMO_SEED, db });
   const ws = new WebSocketGateway(logger);
   const marketData = new MarketDataProviderRegistry();
-  const health = new HealthService(db, ws, marketData);
+  const analysisKeyPresent = Boolean(config().ANTHROPIC_API_KEY);
+  const health = new HealthService(
+    db,
+    ws,
+    marketData,
+    () => analysisKeyPresent,
+    undefined,
+    (environment) => brokers.isSupported(environment),
+  );
   const dataQuality = new MarketDataQualityService(db);
   const calendar = new MarketCalendarService(db);
   const indicators = new IndicatorService(db);
@@ -81,6 +91,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const watchlists = new WatchlistService(db);
   const scans = new ScanService(db, indicators, watchlists);
   const strategies = new StrategyService(db);
+  const risk = new RiskEngine(db);
   const notifications = new NotificationService(db, access);
   const signals = new SignalService(
     db,
@@ -95,7 +106,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
   const gate = new TradingGate(db, brokers, health, dataQuality, calendar);
-  const orders = new OrderService(db, access, audit, brokers, gate, notifications);
+  const orders = new OrderService(db, access, audit, brokers, gate, risk, notifications);
   const performance = new PerformanceService(db, access, audit);
   const journal = new JournalService(db, access);
   // No key means a provider that refuses, not one that invents an answer: a
@@ -134,6 +145,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     journal,
     analysis,
     notifications,
+    risk,
     ws,
   };
 }

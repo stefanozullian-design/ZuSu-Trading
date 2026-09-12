@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildContainer, type AppContainer } from '../../src/container.js';
 import { BrokerRegistry } from '../../src/modules/broker/broker-registry.js';
 import { OrderService } from '../../src/modules/orders/order.service.js';
+import { RiskEngine } from '../../src/modules/risk/risk-engine.js';
 import { TradingGate } from '../../src/modules/risk/trading-gate.js';
 import { MarketDataQualityService } from '../../src/modules/market-data/quality.service.js';
 import type { ProviderCandle } from '../../src/modules/market-data/types.js';
@@ -75,6 +76,7 @@ beforeEach(async () => {
     container.audit,
     brokers,
     new TradingGate(db, brokers, container.health, container.dataQuality, container.calendar),
+    new RiskEngine(db),
   );
 
   const user = await createUser(db, { email: 'trader@test.local', role: UserRole.MANAGER });
@@ -88,7 +90,11 @@ beforeEach(async () => {
   // Access without trading rights: reading a book and moving it are different.
   await grantPortfolioAccess(db, viewer.id, portfolio.id, false);
 
-  await db.instrument.create({ data: { symbol: 'AAPL', name: 'Apple', exchange: 'XNYS' } });
+  // A sector, because the risk engine refuses to trade an instrument it
+  // cannot check against the sector limit.
+  await db.instrument.create({
+    data: { symbol: 'AAPL', name: 'Apple', exchange: 'XNYS', sector: 'Technology' },
+  });
   await new MarketDataQualityService(db).ingestCandles(bars('AAPL', 80), {
     provider: 'test-feed',
   });
@@ -565,7 +571,9 @@ describe('pre-trade checks', () => {
   });
 
   it('refuses to trade a symbol it has no price for', async () => {
-    await db.instrument.create({ data: { symbol: 'MSFT', name: 'Microsoft', exchange: 'XNYS' } });
+    await db.instrument.create({
+      data: { symbol: 'MSFT', name: 'Microsoft', exchange: 'XNYS', sector: 'Technology' },
+    });
 
     const order = await orders.placeOrder(trader, {
       portfolioId,
@@ -595,13 +603,60 @@ describe('pre-trade checks', () => {
     expect(order.rejectionReason).toContain('no active risk limits');
   });
 
-  it('names the limits it does not yet enforce', async () => {
+  it('names every limit it checked, including the whole-book ones', async () => {
     const check = await orders.preTradeCheck(portfolioId, 'AAPL', dec('10'), 'BUY', NOW);
 
     expect(check.passed).toBe(true);
-    // A caller reading a passed check must know what it did not verify.
-    expect(check.notYetEnforced.join(' ')).toContain('daily and weekly loss limits');
-    expect(check.notYetEnforced.join(' ')).toContain('correlation');
+    // Since Phase 7 the portfolio limits are enforced rather than listed as
+    // absent, and the check says which ones it ran.
+    expect(check.checked).toContain('portfolio exposure');
+    expect(check.checked).toContain('correlation');
+    expect(check.checked).toContain('daily loss');
+    expect(check.notYetEnforced).toHaveLength(0);
+  });
+
+  it('reports the absence of the whole-book layer rather than skipping it', async () => {
+    // A service built without a risk engine — which production never is.
+    const withoutRisk = new OrderService(
+      db,
+      container.access,
+      container.audit,
+      brokers,
+      new TradingGate(db, brokers, container.health, container.dataQuality, container.calendar),
+    );
+
+    const check = await withoutRisk.preTradeCheck(portfolioId, 'AAPL', dec('10'), 'BUY', NOW);
+
+    // A pre-trade check that silently omitted the portfolio limits would read
+    // exactly like one that ran them.
+    expect(check.checked.join(' ')).toContain('whole-book risk checks unavailable');
+  });
+
+  it('refuses an order that breaches a portfolio limit, not just a per-order one', async () => {
+    await db.position.create({
+      data: {
+        portfolioId,
+        symbol: 'AAPL',
+        status: 'CLOSED',
+        quantity: '0',
+        averageEntryPrice: '100',
+        realizedPnl: '-2500',
+        openedAt: NOW,
+        closedAt: NOW,
+      },
+    });
+
+    const order = await orders.placeOrder(trader, {
+      portfolioId,
+      symbol: 'AAPL',
+      side: 'BUY',
+      quantity: '1',
+      at: NOW,
+    });
+
+    // The fixture's daily loss limit is 2,000 and 2,500 has been lost today.
+    expect(order.status).toBe(OrderStatus.REJECTED);
+    expect(order.rejectionReason).toContain('daily loss');
   });
 
   it('refuses to trade at all while the kill switch is engaged', async () => {

@@ -225,11 +225,16 @@ describe('system endpoints', () => {
     );
     expect(byName.DATABASE).toBe('HEALTHY');
     expect(byName.BROKER).toBe('HEALTHY');
-    // Nothing claims to be running that is not.
+    // Nothing claims to be running that is not. Claude is disabled because
+    // this deployment has no API key; the scheduler because a test app builds
+    // no timers; reconciliation because it does not exist yet.
     expect(byName.CLAUDE).toBe('DISABLED');
     expect(byName.RECONCILIATION).toBe('DISABLED');
     expect(byName.SCHEDULER).toBe('DISABLED');
-    expect(health.tradingEnabled).toBe(false);
+    // True since Phase 5: an order can be placed in this environment. It says
+    // nothing about whether one should be — the approval gate is a person's,
+    // and a halted portfolio still refuses.
+    expect(health.tradingEnabled).toBe(true);
   });
 
   it('describes the current environment', async () => {

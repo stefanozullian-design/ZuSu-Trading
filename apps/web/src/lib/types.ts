@@ -653,3 +653,41 @@ export interface NotificationRow {
   createdAt: string;
   sentAt: string | null;
 }
+
+export interface RiskCheckRow {
+  limitName: string;
+  passed: boolean;
+  actual: string | null;
+  limit: string;
+  message: string;
+  severity: string;
+}
+
+export interface RiskSizing {
+  quantity: string;
+  riskAmount: string;
+  riskPerShare: string | null;
+  notional: string;
+  boundBy: string;
+  reason: string | null;
+  volatilityFloorApplied: boolean;
+}
+
+export interface RiskAssessment {
+  allowed: boolean;
+  checks: RiskCheckRow[];
+  breaches: Record<string, unknown>[];
+  nearMisses: Record<string, unknown>[];
+  sizing: RiskSizing | null;
+}
+
+export interface RiskEventRow {
+  id: string;
+  type: string;
+  severity: string;
+  message: string;
+  limitName: string | null;
+  limitValue: string | null;
+  actualValue: string | null;
+  createdAt: string;
+}

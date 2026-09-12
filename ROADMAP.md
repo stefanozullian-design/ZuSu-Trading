@@ -4,9 +4,10 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 6 complete**, except for verification against the live
-Anthropic API, which needs a key this deployment does not have. Phase 7 (the
-risk engine and scheduler) is next.
+Current position: **Phase 7 complete.** Phase 8 (the live broker adapter) is
+next, and is blocked on confirming what Robinhood's API actually exposes.
+Phase 6 remains unverified against the live Anthropic API, which needs a key
+this deployment does not have.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -112,7 +113,7 @@ approach the market-data adapter took — and the first real call may still find
 something unhandled. With no key the platform says so on screen and records the
 refusal; it never substitutes a plausible-looking opinion.
 
-## Phase 7 — Risk engine
+## Phase 7 — Risk engine ✅
 
 Position sizing (fixed, percentage, risk-based, ATR-based, fractional Kelly with
 conservative defaults), portfolio limits, sector and correlation exposure,
@@ -121,6 +122,26 @@ drawdown, automatic and manual kill switches, circuit breakers, the scan schedul
 Exit criteria: every hard limit rejects an order with a human-readable reason;
 concentrated exposure across correlated symbols is recognised, not just duplicate
 tickers.
+
+Both hold. Every check reports its limit name, the limit value and the actual
+value, so a refusal reads "sector exposure exceeded: 42.76 against a limit of
+30.00 percent of equity in Technology" rather than "risk limit exceeded".
+Correlation is measured on stored returns rather than inferred from sector, and
+a symbol with too little history to measure blocks rather than passes.
+
+Sizing is fixed-fractional: the quantity follows from the distance to the stop,
+so a wider stop buys fewer shares and the loss if the stop is hit is the same
+fraction of equity either way. Without a stop it refuses rather than falling
+back to a notional cap, which would change the method without saying so.
+Fractional Kelly is deliberately absent — it needs an edge estimate the
+platform does not have, and a sizing method resting on a fabricated win rate is
+worse than a simple one.
+
+The scheduler arrived with it, and clears the items four earlier phases were
+carrying: calendar sync, health persistence, order polling, daily snapshots,
+live-strategy evaluation and the drawdown breaker. Every job may stop trading
+and none may start any — the closest it comes is producing recommendations that
+then wait for a person.
 
 ## Phase 8 — Broker
 

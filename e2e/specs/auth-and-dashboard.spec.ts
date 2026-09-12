@@ -54,15 +54,19 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('heading', { name: /system health/i })).toBeVisible();
     await expect(page.getByText('Database', { exact: true })).toBeVisible();
 
-    // Unbuilt services report DISABLED with the phase that delivers them,
-    // rather than a green light for something that is not running.
-    await expect(page.getByText(/AI analysis arrives in Phase 6/i)).toBeVisible();
+    // Nothing claims to be running that is not: with no API key the analysis
+    // service reports DISABLED with the reason, rather than a green light.
+    await expect(page.getByText(/no ANTHROPIC_API_KEY/i)).toBeVisible();
   });
 
   test('says why the approvals panel is empty rather than showing an empty table', async ({
     page,
   }) => {
-    await expect(page.getByText(/no order can be created by any route/i)).toBeVisible();
+    // Whether or not anything is waiting — earlier specs in this run may have
+    // produced some — the panel is about decisions a person owes, and it
+    // points at the page where they are made.
+    await expect(page.getByRole('heading', { name: /waiting for a decision/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /open the trading page/i })).toBeVisible();
   });
 });
 

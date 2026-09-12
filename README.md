@@ -133,6 +133,37 @@ position opens, with the price and the signal that produced it; notes are
 appended and never overwrite what was captured at entry, because a thesis edited
 after the outcome is known stops being evidence.
 
+### The Risk page
+
+`/risk` sizes a proposed trade and checks it against the whole book. Sizing is
+fixed-fractional: the number of shares follows from the distance to the stop, so
+a wider stop buys fewer shares and the loss if the stop is hit is the same
+fraction of equity either way. Without a stop it refuses rather than falling
+back to a notional cap.
+
+Every check shows its limit next to the actual value, so a refusal reads
+"sector exposure exceeded: 42.76 against a limit of 30.00 percent of equity in
+Technology" — something you can act on. A check that cannot be evaluated blocks:
+an instrument with no sector recorded, or a symbol with too little history to
+measure correlation, refuses rather than passing.
+
+Breaches and near-misses are both recorded, because a pattern of near-misses is
+what makes the eventual breach unsurprising.
+
+### The scheduler
+
+Six background jobs run inside the API: calendar sync, health persistence, order
+polling, live-strategy evaluation, daily snapshots and the drawdown breaker.
+
+Every one of them may stop trading and none may start any. The closest the
+platform comes to automation is the evaluation job, which produces
+recommendations that then wait for a person exactly as a hand-triggered one's
+would. A test runs every job twice and asserts that no order exists afterwards.
+
+The drawdown breaker halts a portfolio automatically when equity falls too far
+from its peak, and nothing anywhere un-halts one: releasing is a person's
+decision.
+
 ### Analysis
 
 The Trading page can ask a model about a recommendation. What comes back is an
@@ -192,8 +223,8 @@ API docs are at <http://localhost:4000/docs>.
 ### Tests
 
 ```bash
-npm test              # 739 unit and integration tests
-npm run test:e2e      # 66 Playwright specs against a real browser
+npm test              # 823 unit and integration tests
+npm run test:e2e      # 71 Playwright specs against a real browser
 ```
 
 The end-to-end suite manages its own database, API and web server. It migrates,

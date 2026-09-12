@@ -2,14 +2,22 @@ import { buildApp } from './app.js';
 import { config } from './config/env.js';
 import { disconnectPrisma } from './lib/prisma.js';
 import { disconnectRedis } from './lib/redis.js';
+import { Scheduler } from './modules/scheduler/scheduler.js';
 
 async function main(): Promise<void> {
   const cfg = config();
-  const { app } = await buildApp();
+  const { app, container } = await buildApp();
+
+  // The scheduler lives with the server rather than the container, because a
+  // test that builds the app must not start timers. Nothing it runs can
+  // approve or place an order — see the note at the top of scheduler.ts.
+  const scheduler = new Scheduler(container, app.log, { autoStart: true });
+  container.health.attachScheduler(() => scheduler.jobStates());
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
     try {
+      scheduler.stop();
       await app.close();
       await disconnectPrisma();
       await disconnectRedis();
@@ -30,7 +38,11 @@ async function main(): Promise<void> {
   // `environment` is already a base field on every log line; naming it again
   // here would emit a duplicate key.
   app.log.info(
-    { liveTradingAllowed: cfg.ALLOW_LIVE_TRADING, port: cfg.PORT },
+    {
+      liveTradingAllowed: cfg.ALLOW_LIVE_TRADING,
+      port: cfg.PORT,
+      scheduledJobs: scheduler.jobStates().map((job) => job.name),
+    },
     'ZuSu Trading API listening',
   );
 }

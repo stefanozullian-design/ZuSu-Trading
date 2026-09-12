@@ -112,6 +112,50 @@ export async function registerAnalysisRoutes(
     },
   );
 
+  typed.get(
+    '/regime',
+    {
+      ...read,
+      schema: {
+        tags: ['analysis'],
+        summary: 'The most recent market-regime classification',
+        description:
+          'Null when nothing has classified one. A regime is a claim about ' +
+          'the market, and an absent claim is reported as absent rather than ' +
+          'as NEUTRAL.',
+        response: {
+          200: z.object({
+            regime: z
+              .object({
+                regime: z.string(),
+                confidence: z.string(),
+                marketCode: z.string(),
+                detectedAt: z.string().datetime(),
+                inputs: z.record(z.unknown()),
+              })
+              .nullable(),
+          }),
+        },
+      },
+    },
+    async (_request, reply) => {
+      const row = await container.db.marketRegime.findFirst({
+        orderBy: { detectedAt: 'desc' },
+      });
+      return reply.send({
+        regime: row
+          ? {
+              regime: row.regime,
+              confidence: row.confidence.toString(),
+              marketCode: row.marketCode,
+              detectedAt: row.detectedAt.toISOString(),
+              inputs: row.inputs as Record<string, unknown>,
+            }
+          : null,
+      });
+    },
+  );
+
   typed.post(
     '/screen',
     {

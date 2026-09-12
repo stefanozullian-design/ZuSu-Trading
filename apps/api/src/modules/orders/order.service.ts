@@ -18,6 +18,7 @@ import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { BrokerOrder } from '../broker/types.js';
 import { BrokerError } from '../broker/types.js';
 import type { AccessControl, Principal } from '../rbac/access-control.js';
+import type { RiskEngine } from '../risk/risk-engine.js';
 import type { TradingGate } from '../risk/trading-gate.js';
 import { applyFill } from './position-book.js';
 
@@ -53,20 +54,15 @@ import { applyFill } from './position-book.js';
  */
 
 /**
- * Portfolio-level limits this module does not yet enforce.
+ * Portfolio-level limits this module does not enforce itself.
  *
- * Listed rather than silently absent: a caller reading a successful pre-trade
- * check should know exactly what it did and did not verify. The risk engine
- * in Phase 7 owns these, and until it exists a person is the only thing
- * standing between a strategy and a concentrated book.
+ * Empty since Phase 7: the risk engine checks the whole book before an order
+ * is written, and its findings are part of the pre-trade check below. The
+ * constant stays because the shape of the honesty matters more than the fact
+ * that it is currently empty — a limit that stops being enforced belongs here
+ * rather than nowhere.
  */
-export const LIMITS_NOT_YET_ENFORCED = [
-  'daily and weekly loss limits',
-  'portfolio, sector and symbol exposure percentages',
-  'correlation between open positions',
-  'drawdown-triggered circuit breakers',
-  'consecutive-loss limits',
-] as const;
+export const LIMITS_NOT_YET_ENFORCED: readonly string[] = [];
 
 export interface PreTradeCheck {
   passed: boolean;
@@ -137,6 +133,12 @@ export class OrderService {
     private readonly audit: AuditService,
     private readonly brokers: BrokerRegistry,
     private readonly gate: TradingGate,
+    /**
+     * The whole-book risk checks. Optional only so a narrow test can build
+     * this service without one; production always passes it, and its absence
+     * is reported by the pre-trade check rather than silently skipped.
+     */
+    private readonly risk?: RiskEngine,
     /** Optional: a refusal that nobody is told about is still recorded. */
     private readonly notifications?: {
       notifySafe(input: {
@@ -534,12 +536,12 @@ export class OrderService {
   }
 
   /**
-   * The pre-trade checks this module can make today.
+   * Everything checked before an order is written.
    *
-   * Deliberately narrow, and it says so: the three limits below are per-order
-   * facts available without a risk engine. Everything in
-   * `LIMITS_NOT_YET_ENFORCED` is absent, and a caller is told rather than left
-   * to assume a full risk check happened.
+   * Two layers: the per-order facts this module can establish on its own
+   * (size, count, cash), and the whole-book assessment from the risk engine
+   * (exposure, correlation, losses, drawdown). The result names every check it
+   * ran, so a caller never has to assume which ones happened.
    */
   async preTradeCheck(
     portfolioId: string,
@@ -623,6 +625,35 @@ export class OrderService {
         false,
         `${String(tradesToday)} orders have been placed today, which is the configured maximum.`,
       );
+    }
+
+    // The whole-book layer. Its absence is reported rather than skipped: a
+    // pre-trade check that silently omitted the portfolio limits would read
+    // exactly like one that ran them.
+    if (!this.risk) {
+      checked.push('(whole-book risk checks unavailable: no risk engine attached)');
+      return result(true, null);
+    }
+
+    const assessment = await this.risk.assess({
+      portfolioId,
+      symbol,
+      side,
+      direction: side === 'BUY' ? 'LONG' : 'SHORT',
+      entryPrice: price,
+      // Sizing is not this call's job — the quantity is already decided — so a
+      // nominal stop is supplied and only the book-level checks are read.
+      stopPrice: side === 'BUY' ? price.times(dec('0.98')) : price.times(dec('1.02')),
+      quantity,
+      at,
+    });
+
+    for (const check of assessment.checks) checked.push(check.limitName);
+    await this.risk.recordEvents(portfolioId, assessment);
+
+    if (!assessment.allowed) {
+      const first = assessment.breaches[0];
+      return result(false, first?.message ?? 'A portfolio risk limit was breached.');
     }
 
     return result(true, null);
