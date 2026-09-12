@@ -14,6 +14,9 @@ import { MarketDataProviderRegistry } from './modules/market-data/provider-regis
 import { MarketDataQualityService } from './modules/market-data/quality.service.js';
 import { ScanService } from './modules/market-data/scan.service.js';
 import { BacktestService } from './modules/backtest/backtest.service.js';
+import { JournalService } from './modules/journal/journal.service.js';
+import { OrderService } from './modules/orders/order.service.js';
+import { PerformanceService } from './modules/performance/performance.service.js';
 import { SignalService } from './modules/strategies/signal.service.js';
 import { StrategyService } from './modules/strategies/strategy.service.js';
 import { WatchlistService } from './modules/market-data/watchlist.service.js';
@@ -49,6 +52,9 @@ export interface AppContainer {
   dataQuality: MarketDataQualityService;
   killSwitch: KillSwitchService;
   gate: TradingGate;
+  orders: OrderService;
+  performance: PerformanceService;
+  journal: JournalService;
   ws: WebSocketGateway;
 }
 
@@ -59,7 +65,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const audit = new AuditService(db);
   const access = new AccessControl(db, audit);
   const auth = new AuthService(db, audit);
-  const brokers = new BrokerRegistry({ seed: config().DEMO_SEED });
+  const brokers = new BrokerRegistry({ seed: config().DEMO_SEED, db });
   const ws = new WebSocketGateway(logger);
   const marketData = new MarketDataProviderRegistry();
   const health = new HealthService(db, ws, marketData);
@@ -76,6 +82,9 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
   const gate = new TradingGate(db, brokers, health, dataQuality, calendar);
+  const orders = new OrderService(db, access, audit, brokers, gate);
+  const performance = new PerformanceService(db, access, audit);
+  const journal = new JournalService(db, access);
 
   return {
     db,
@@ -99,6 +108,9 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     dataQuality,
     killSwitch,
     gate,
+    orders,
+    performance,
+    journal,
     ws,
   };
 }

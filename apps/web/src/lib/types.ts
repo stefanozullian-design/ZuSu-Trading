@@ -500,3 +500,113 @@ export interface BacktestSummary {
 export interface BacktestDetail extends BacktestSummary {
   trades: BacktestTradeRow[];
 }
+
+export interface OrderExecution {
+  id: string;
+  quantity: string;
+  price: string;
+  fees: string;
+  executedAt: string;
+}
+
+export interface OrderRow {
+  id: string;
+  idempotencyKey: string;
+  correlationId: string;
+  portfolioId: string;
+  signalId: string | null;
+  symbol: string;
+  side: string;
+  orderType: string;
+  timeInForce: string;
+  status: string;
+  environment: string;
+  requestedQty: string;
+  filledQty: string;
+  limitPrice: string | null;
+  stopPrice: string | null;
+  averageFillPrice: string | null;
+  expectedPrice: string | null;
+  slippage: string | null;
+  feesTotal: string;
+  rejectionReason: string | null;
+  brokerOrderId: string | null;
+  submittedAt: string | null;
+  filledAt: string | null;
+  createdAt: string;
+  executions: OrderExecution[];
+}
+
+export interface TaxLot {
+  id: string;
+  quantity: string;
+  remainingQty: string;
+  costBasis: string;
+  openedAt: string;
+  closedAt: string | null;
+  realizedGain: string;
+}
+
+export interface PositionWithLots {
+  id: string;
+  symbol: string;
+  status: string;
+  quantity: string;
+  averageEntryPrice: string;
+  markPrice: string | null;
+  realizedPnl: string;
+  /** Null when nothing has priced the symbol — never rendered as zero. */
+  unrealizedPnl: string | null;
+  feesTotal: string;
+  stopPrice: string | null;
+  targetPrice: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  lots: TaxLot[];
+}
+
+export interface PortfolioSnapshotRow {
+  asOf: string;
+  cashBalance: string;
+  positionsValue: string;
+  equity: string;
+  netCashFlow: string;
+  realizedPnl: string;
+  unrealizedPnl: string;
+  feesTotal: string;
+  openPositions: number;
+}
+
+export interface PerformanceReport {
+  portfolioId: string;
+  from: string;
+  to: string;
+  openingEquity: string;
+  closingEquity: string;
+  netDeposits: string;
+  investmentGain: string;
+  timeWeightedReturnPct: string | null;
+  moneyWeightedReturnPct: string | null;
+  realizedPnl: string;
+  unrealizedPnl: string;
+  feesPaid: string;
+  maxDrawdownPct: string;
+  snapshots: PortfolioSnapshotRow[];
+  notes: string[];
+}
+
+export interface JournalEntry {
+  id: string;
+  portfolioId: string;
+  positionId: string | null;
+  signalId: string | null;
+  symbol: string | null;
+  entryThesis: string | null;
+  technicalContext: Record<string, unknown> | null;
+  aiReasoning: string | null;
+  outcome: string | null;
+  lessons: string | null;
+  userNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,8 +1,10 @@
-import type { Portfolio } from '@prisma/client';
+import type { Portfolio, PrismaClient } from '@prisma/client';
 import { TradingEnvironment, assertSameEnvironment } from '@zusu/shared';
 import { config } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import { DemoBroker } from './demo-broker.js';
+import { PaperBroker } from './paper-broker.js';
+import { StoredBarPrices } from './stored-bar-prices.js';
 import type { BrokerAdapter } from './types.js';
 
 /**
@@ -15,8 +17,17 @@ import type { BrokerAdapter } from './types.js';
  */
 export class BrokerRegistry {
   private readonly demoBrokers = new Map<string, DemoBroker>();
+  private readonly paperBrokers = new Map<string, PaperBroker>();
 
-  constructor(private readonly options: { seed?: number } = {}) {}
+  /**
+   * @param options.now Injectable clock, handed to the simulated venues.
+   *   A test that had to wait for the real market to open could not assert a
+   *   fill at all, and the same reasoning that makes the trading gate's
+   *   instant an input applies here.
+   */
+  constructor(
+    private readonly options: { seed?: number; db?: PrismaClient; now?: () => number } = {},
+  ) {}
 
   forPortfolio(portfolio: Pick<Portfolio, 'id' | 'environment' | 'initialCapital'>): BrokerAdapter {
     const environment = portfolio.environment as TradingEnvironment;
@@ -29,6 +40,7 @@ export class BrokerRegistry {
             accountId: `DEMO-${portfolio.id.slice(0, 8)}`,
             startingCash: portfolio.initialCapital.toString(),
             seed: this.options.seed ?? config().DEMO_SEED,
+            ...(this.options.now && { now: this.options.now }),
           });
           this.demoBrokers.set(portfolio.id, broker);
         }
@@ -36,11 +48,30 @@ export class BrokerRegistry {
         return broker;
       }
 
-      case TradingEnvironment.PAPER:
-        throw new AppError(
-          'NOT_IMPLEMENTED',
-          'The paper broker arrives in Phase 5. Paper portfolios are read-only until then.',
-        );
+      case TradingEnvironment.PAPER: {
+        const db = this.options.db;
+        if (!db) {
+          // The paper venue prices from stored bars, so without a database
+          // there is nothing to match against. Saying so beats quoting a
+          // price from nowhere.
+          throw new AppError(
+            'NOT_IMPLEMENTED',
+            'This registry was built without a database, so the paper venue has no prices.',
+          );
+        }
+        let paper = this.paperBrokers.get(portfolio.id);
+        if (!paper) {
+          paper = new PaperBroker({
+            accountId: `PAPER-${portfolio.id.slice(0, 8)}`,
+            startingCash: portfolio.initialCapital.toString(),
+            prices: new StoredBarPrices(db),
+            ...(this.options.now && { now: this.options.now }),
+          });
+          this.paperBrokers.set(portfolio.id, paper);
+        }
+        assertSameEnvironment(environment, paper.environment, 'BrokerRegistry.forPortfolio');
+        return paper;
+      }
 
       case TradingEnvironment.LIVE:
         if (!config().ALLOW_LIVE_TRADING) {
@@ -61,14 +92,22 @@ export class BrokerRegistry {
 
   /** True when a portfolio's environment has a working adapter today. */
   isSupported(environment: TradingEnvironment): boolean {
-    return environment === TradingEnvironment.DEMO;
+    return (
+      environment === TradingEnvironment.DEMO ||
+      (environment === TradingEnvironment.PAPER && this.options.db !== undefined)
+    );
   }
 
   demoBrokerFor(portfolioId: string): DemoBroker | undefined {
     return this.demoBrokers.get(portfolioId);
   }
 
+  paperBrokerFor(portfolioId: string): PaperBroker | undefined {
+    return this.paperBrokers.get(portfolioId);
+  }
+
   reset(): void {
     this.demoBrokers.clear();
+    this.paperBrokers.clear();
   }
 }

@@ -4,7 +4,7 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 4 complete.** Phase 5 (paper trading) is next.
+Current position: **Phase 5 complete.** Phase 6 (Claude analysis) is next.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -64,7 +64,7 @@ fill; the gross figure is reported beside the net one so the cost is visible.
 Optimisation returns a ranking and the reasons to doubt it, stores nothing, and
 cannot write a version.
 
-## Phase 5 — Paper trading
+## Phase 5 — Paper trading ✅
 
 Paper broker with modelled order latency, partial fills, bid/ask spread, slippage
 and realistic stop behaviour. Portfolio accounting (time- and money-weighted
@@ -72,6 +72,20 @@ returns, deposits and withdrawals, tax lots), the trade journal.
 
 Exit criteria: paper fills are not "every market order at the candle close";
 portfolio return is correct in the presence of deposits and withdrawals.
+
+Both hold. A paper order fills only from a bar that opened after it was
+submitted, takes at most a fraction of that bar's volume — so a large order
+fills across several bars — pays the spread plus slippage that grows with its
+participation, and fills a gapped stop at the open rather than at the stop. A
+deposit is recorded as its own row and removed from both return measures: the
+time-weighted figure chains period returns and the money-weighted one is an
+internal rate of return over the dated flows, and the API reports both rather
+than choosing the flattering one.
+
+The order pipeline that arrived with it is where the product's premise lives: a
+signal becomes an order only through `POST /signals/:id/approve`, which requires
+a person holding `signal:approve` and trading rights on the portfolio. Nothing
+in the codebase calls it automatically, and there is no setting that would.
 
 ## Phase 6 — Claude
 

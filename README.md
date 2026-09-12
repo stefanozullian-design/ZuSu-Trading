@@ -98,6 +98,41 @@ Evaluation accounts for every symbol it looked at: fired, rejected, already
 signalled on this bar, or **could not be judged** with the reason — a rule that
 cannot be evaluated returns unknown, and unknown is never permission to trade.
 
+### The Trading page
+
+`/trading` is where the platform's premise is visible. A live strategy produces
+recommendations; they sit in a queue until a person approves or rejects each
+one. Approving sizes the order, runs the pre-trade checks and submits it to the
+broker. Rejecting requires a reason.
+
+There is no "approve all", no automatic sweep, and no setting that creates one.
+Full automation is not a feature flag here — it is a thing this platform does
+not have, and an end-to-end spec fails if such a control ever appears.
+
+The page also shows positions with their **tax lots** — each opening fill keeps
+its own cost basis and opening date, and a sale consumes lots oldest-first —
+and orders with their fills, fees and slippage against the price the decision
+was based on. A refused order is kept with its reason, so "why did this not
+trade" always has an answer.
+
+### The Performance page
+
+`/performance` reports both return measures side by side:
+
+- **Time-weighted** — how the strategy did, with external cash flows removed.
+- **Money-weighted** — how this investor did, an internal rate of return over
+  the dated flows.
+
+They differ, sometimes by a lot, and showing only the flattering one is the
+oldest trick in this business. A deposit is recorded as its own row and appears
+under **net deposits**, never as a return: an account that grew because somebody
+wired money in has returned nothing.
+
+The trade journal is on the same page. An entry is written automatically when a
+position opens, with the price and the signal that produced it; notes are
+appended and never overwrite what was captured at entry, because a thesis edited
+after the outcome is known stops being evidence.
+
 ### The Backtests page
 
 `/backtests` runs a strategy version over stored history. The design rule is
@@ -136,8 +171,8 @@ API docs are at <http://localhost:4000/docs>.
 ### Tests
 
 ```bash
-npm test              # 649 unit and integration tests
-npm run test:e2e      # 53 Playwright specs against a real browser
+npm test              # 718 unit and integration tests
+npm run test:e2e      # 62 Playwright specs against a real browser
 ```
 
 The end-to-end suite manages its own database, API and web server. It migrates,

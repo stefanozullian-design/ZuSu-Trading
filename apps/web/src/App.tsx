@@ -5,6 +5,8 @@ import {
   LogOut,
   Radar,
   ScrollText,
+  LineChart,
+  ShieldCheck,
   TestTubeDiagonal,
   Waypoints,
   Wifi,
@@ -23,6 +25,8 @@ import { MarketPage } from '@/pages/MarketPage';
 import { ScannerPage } from '@/pages/ScannerPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
+import { PerformancePage } from '@/pages/PerformancePage';
+import { TradingPage } from '@/pages/TradingPage';
 import { cn } from '@/lib/utils';
 import type { EnvironmentInfo } from '@/lib/types';
 
@@ -82,6 +86,20 @@ function Shell() {
                 label="Strategies"
               />
             )}
+            {can('order:read') && (
+              <NavItem
+                to="/trading"
+                icon={<ShieldCheck className="h-4 w-4" aria-hidden />}
+                label="Trading"
+              />
+            )}
+            {can('performance:read') && (
+              <NavItem
+                to="/performance"
+                icon={<LineChart className="h-4 w-4" aria-hidden />}
+                label="Performance"
+              />
+            )}
             {can('backtest:read') && (
               <NavItem
                 to="/backtests"
@@ -133,6 +151,14 @@ function Shell() {
         <Route
           path="/strategies"
           element={can('strategy:read') ? <StrategiesPage /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/trading"
+          element={can('order:read') ? <TradingPage /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/performance"
+          element={can('performance:read') ? <PerformancePage /> : <Navigate to="/" />}
         />
         <Route
           path="/backtests"

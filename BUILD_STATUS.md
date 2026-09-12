@@ -1,8 +1,11 @@
 # Build status
 
-**Current phase: 4 — Backtesting. Complete.** Phase 5 (paper trading) is next.
-**Live trading: not possible.** No route in this API can create an order, and
-`ALLOW_LIVE_TRADING` defaults to false.
+**Current phase: 5 — Paper trading. Complete.** Phase 6 (Claude analysis) is next.
+**Live trading: not possible.** Orders exist now, but only in the DEMO and PAPER
+environments — the live adapter arrives in Phase 8 and `ALLOW_LIVE_TRADING`
+defaults to false. No order can be created without a person: the only path from
+a recommendation to a broker requires `signal:approve` and is never called
+automatically.
 
 **Market-data provider: Massive.com** (the former Polygon.io, rebranded
 2025-10-30). Chosen for full US-tape coverage, REST and WebSocket access, a real
@@ -208,20 +211,75 @@ as a month. A ranged load is now bounded by its range, a load that would exceed
 100,000 rows fails rather than returning a short window, and every stored result
 carries the span its bars actually covered.
 
+### Phase 5 — Paper trading
+
+| Step                      | State                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1. Paper broker           | Done — priced from stored market bars, with latency, finite liquidity, spread, participation-scaled slippage and gapped stops. |
+| 2. Order manager          | Done — idempotent orders, once-only execution ingestion, the shared state machine, a rejected order kept as a row.             |
+| 3. Positions and tax lots | Done — one lot per opening fill, FIFO consumption, a closed position kept as history.                                          |
+| 4. Portfolio accounting   | Done — time- and money-weighted returns with external flows removed, daily snapshots, drawdown.                                |
+| 5. Trade journal          | Done — the thesis captured at entry by the system, notes appended and never overwritten.                                       |
+| 6. The Trading page       | Done — `/trading`, the approval queue, positions with their lots, orders with their slippage.                                  |
+| 7. The Performance page   | Done — `/performance`, both return measures side by side, cash flows, the journal.                                             |
+
+**The premise, in code.** A signal becomes an order through exactly one
+function, `OrderService.approveSignal`, reachable through exactly one route,
+and both require a person holding `signal:approve` plus trading rights on the
+portfolio. There is no scheduler, sweeper or setting that calls it. The UI has
+no "approve all" and no automation toggle — an end-to-end spec asserts the
+absence of those controls, because a promise about automation is worth less
+than a test that fails when one appears.
+
+**What survives the act.** Every order carries a unique idempotency key,
+derived from the signal for an approval, so two people approving at once
+produce one order rather than two positions. Every execution is ingested once
+(`brokerExecId` is unique), so polling an order repeatedly cannot double a
+position. A transport failure leaves an order `UNKNOWN`, never `CANCELLED`:
+"we do not know" is a state, and pretending otherwise is how a position nobody
+knows about gets opened. A refused order is stored with its reason.
+
+**Tax lots, not an average.** Each opening fill creates a lot with its own cost
+basis and opening date; a sale consumes lots oldest-first and attributes the
+gain to each. An average price cannot answer "what did we pay for these
+particular shares, and when", which is the question the holding period turns
+on. A reversal is two events — the old position closes and a new one opens at
+the fill that opened it — never one position that changed sign.
+
+**A deposit is not a profit.** The one performance lie this module exists to
+prevent. Both return measures remove external flows, the time-weighted figure
+treats a flow as capital the trading had to work with from the start of its
+period, and the money-weighted figure is withheld for windows under a week
+where annualising an IRR produces a number in the thousands of percent. The
+conventions travel with the report rather than living in a document.
+
+**Pre-trade checks say what they did not check.** Position size, open position
+count, trades today and cash on hand are verified; the daily loss limit,
+exposure percentages, correlation and drawdown breakers are named in
+`LIMITS_NOT_YET_ENFORCED` and belong to the risk engine in Phase 7. A caller
+reading a passed check is told exactly what it covered — a partial check
+reported as a full one would be worse than no check at all.
+
+**One honesty fix found while building the page.** The positions view served
+`unrealizedPnl` straight from the column, which is only written at fill time,
+so a seeded position rendered "0.00" — indistinguishable from flat. Marks are
+now computed on read from the newest stored bar, and a symbol with no stored
+price returns null so the UI can say "not priced".
+
 ### Test coverage
 
-649 unit and integration tests plus 53 end-to-end specs, all passing.
+718 unit and integration tests plus 62 end-to-end specs, all passing.
 
 | Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `apps/api` unit        | 334   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
-| `apps/api` integration | 278   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
+| `apps/api` unit        | 356   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
+| `apps/api` integration | 325   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
 | `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### End-to-end coverage
 
-53 Playwright specs drive a real browser against a real API and database. They
+62 Playwright specs drive a real browser against a real API and database. They
 exist for what the faster suites structurally cannot check: that the pieces are
 wired to each other, and that the honesty rules the backend enforces survive to
 the screen — a null indicator rendered as `— needs 50` rather than `0`, an
@@ -245,8 +303,10 @@ matches and its unevaluable path, watchlist scoping, saved scans, building a
 nested strategy rule and reading it back in words, a manager who may author but
 not promote, an admin walking a version to live one rung at a time, a dry run
 accounting for every symbol it looked at, a backtest that arrives with its
-modelling assumptions and its gross figure beside its net one, and the kill
-switch including the API refusing a manager's release.
+modelling assumptions and its gross figure beside its net one, an approval queue
+with no "approve all" control anywhere on it, a rejection that will not submit
+without a reason, both return measures on screen together, and the kill switch
+including the API refusing a manager's release.
 
 ## Blocked
 
@@ -325,7 +385,7 @@ These are deliberate and documented, not oversights:
 
 | Item                                         | Note                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| No snapshot scheduler                        | `portfolio_snapshots` are written by the seed only; the daily writer belongs with the P&L engine (Phase 5).                                                                                                                                                                                            |
+| No snapshot scheduler                        | `PerformanceService.writeSnapshot` exists and is called on demand; the daily timer belongs with the scheduler (Phase 7).                                                                                                                                                                               |
 | Health checks are not persisted on a timer   | `HealthService.persist` exists but nothing calls it on a schedule; that arrives with the scheduler (Phase 7).                                                                                                                                                                                          |
 | Container images build only in CI            | `docker build` cannot run in the development sandbox — its network policy blocks Docker Hub's blob CDN — so the two Dockerfiles are verified by CI's `docker` job rather than locally. Both images built successfully on the first run. Changes to either Dockerfile cannot be checked before pushing. |
 | Rate limiting is per-process                 | Fine for a single instance; needs the Redis store before running more than one API replica.                                                                                                                                                                                                            |
@@ -333,7 +393,7 @@ These are deliberate and documented, not oversights:
 
 ## Next steps
 
-**Phase 4 — Backtesting. Complete.** Three carried items remain, all belonging
+**Phase 5 — Paper trading. Complete.** Five carried items remain, all belonging
 to later phases:
 
 1. Schedule the calendar sync. Rows are generated on demand today; a deployment
@@ -342,12 +402,21 @@ to later phases:
 2. Schedule strategy evaluation. `SignalService.evaluateAllLive` exists and is
    called by nothing on a timer; a live strategy is evaluated when someone asks
    for it. The scheduler arrives in Phase 7.
-3. Run backtests in the background. A run over a few thousand bars takes
-   milliseconds, so it happens inline and the row records what actually
-   happened; a window of years will need the queue that arrives with the
-   scheduler. The `QUEUED` status exists and is deliberately unused rather than
-   written by something that never dequeues.
+3. Schedule the daily snapshot. `PerformanceService.writeSnapshot` is called on
+   demand and from the Performance page; the daily timer arrives with the
+   scheduler. A report says how many snapshots it had, so a gap is visible
+   rather than smoothed over.
+4. Poll open orders. An order's fills are applied when somebody syncs it or
+   reloads the page; a background poller belongs with the scheduler. Nothing is
+   lost in the meantime — ingestion is idempotent, so a late sync applies
+   exactly what a timely one would have.
+5. Run backtests in the background. A run over a few thousand bars takes
+   milliseconds, so it happens inline; a window of years will need a queue.
 
-Phase 4's tests pass, so **Phase 5 — Paper trading** may begin: the paper broker
-with modelled latency, partial fills, spread and slippage, portfolio accounting
-with time- and money-weighted returns, and the trade journal.
+Phase 5's tests pass, so **Phase 6 — Claude** may begin: the two-stage
+cheap-screen-then-analyse architecture, schema-validated structured output,
+cost and rate controls, the reasoning display, regime detection and
+notifications. **It needs an `ANTHROPIC_API_KEY`**, which this deployment does
+not have — the adapter and its tests can be built against a fake transport, as
+the market-data adapter was, but nothing can be verified against the real API
+until a key exists.

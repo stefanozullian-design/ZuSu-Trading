@@ -140,14 +140,24 @@ export class HealthService {
   }
 
   private async checkBroker(environment: TradingEnvironment): Promise<ServiceProbe> {
+    if (environment === TradingEnvironment.PAPER) {
+      // The paper venue prices from stored bars rather than a network, so
+      // "healthy" here means the platform has prices to match against. A
+      // simulated venue reporting a network latency it never incurred would
+      // be a comforting number about nothing.
+      return this.probe(
+        ServiceName.BROKER,
+        ServiceStatus.HEALTHY,
+        null,
+        'paper venue, priced from stored market bars',
+      );
+    }
     if (environment !== TradingEnvironment.DEMO) {
       return this.probe(
         ServiceName.BROKER,
         ServiceStatus.DISABLED,
         null,
-        environment === TradingEnvironment.PAPER
-          ? 'Paper broker arrives in Phase 5'
-          : 'Live broker adapter arrives in Phase 8',
+        'Live broker adapter arrives in Phase 8',
       );
     }
     const started = Date.now();
