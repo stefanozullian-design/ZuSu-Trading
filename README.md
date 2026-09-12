@@ -4,17 +4,20 @@ A day-trading automation platform built so that **AI can recommend a trade but c
 never authorise one**. Every order passes a deterministic risk engine, every action
 is auditable, and the system fails safe when a dependency disappears.
 
-> **Phases 1 to 8 complete.** Identity, portfolios, market data, the strategy
+> **All nine phases complete.** Identity, portfolios, market data, the strategy
 > builder and its promotion ladder, the backtest engine, paper trading, the
-> analysis layer, the risk engine and scheduler, and now the live broker adapter
-> with reconciliation. Every screen is reachable: **Market**, **Strategies**,
-> **Backtest**, **Trading**, **Performance**, **Risk** and **Audit**.
+> analysis layer, the risk engine and scheduler, the live broker adapter with
+> reconciliation, and the automation ladder. Every screen is reachable:
+> **Market**, **Strategies**, **Backtest**, **Trading**, **Performance**,
+> **Risk**, **Automation** and **Audit**.
 >
-> **Live trading is off.** The live adapter can read a Robinhood account —
-> reconciliation has to be able to look at an account it may not touch — but
-> placing an order through it needs three separate gates open, and
-> `ALLOW_LIVE_TRADING` is false. The only path from a recommendation to a broker
-> runs through `signal:approve` and is never called automatically. See
+> **Live trading is off, and automation ships at manual approval.**
+> `ALLOW_LIVE_TRADING` is false; nothing automatic runs against a LIVE portfolio
+> regardless of how it was promoted; and every seeded strategy sits at
+> MANUAL_APPROVAL, where each order waits for a person. Raising a strategy onto
+> an automatic rung takes an administrator, one rung at a time, a typed
+> confirmation, and eight conditions that all pass — re-checked before every
+> automatic order, not just at the moment of promotion. See
 > [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---

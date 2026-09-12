@@ -1,4 +1,4 @@
-import { OrderStatus, SignalStatus, StrategyStage } from './enums.js';
+import { ExecutionMode, OrderStatus, SignalStatus, StrategyStage } from './enums.js';
 
 /**
  * Explicit state machines. Nothing in the system may represent a lifecycle with
@@ -164,7 +164,7 @@ export function isTerminalSignalStatus(status: SignalStatus): boolean {
 
 export class IllegalTransitionError extends Error {
   constructor(
-    readonly entity: 'order' | 'signal' | 'strategy stage',
+    readonly entity: 'order' | 'signal' | 'strategy stage' | 'execution mode',
     readonly from: string,
     readonly to: string,
   ) {
@@ -226,4 +226,48 @@ export function assertStrategyStageTransition(from: StrategyStage, to: StrategyS
   if (!canTransitionStrategyStage(from, to)) {
     throw new IllegalTransitionError('strategy stage', from, to);
   }
+}
+
+/**
+ * The automation ladder (§10, Phase 9).
+ *
+ * OBSERVE → MANUAL_APPROVAL → LIMITED_AUTO → FULL_AUTO, one rung at a time,
+ * each rung climbed by a person. Two properties matter more than the list:
+ *
+ *   - **No rung can be skipped going up.** MANUAL_APPROVAL to FULL_AUTO is not
+ *     a transition, because the whole purpose of LIMITED_AUTO is to be the
+ *     period during which someone watches the thing trade with caps on.
+ *   - **Every rung can be descended to, from anywhere.** Turning automation
+ *     down must never be blocked by a state machine. Someone reaching for the
+ *     brake is not a transition to validate; it is the one thing that always
+ *     works.
+ */
+export const EXECUTION_MODE_LADDER: readonly ExecutionMode[] = Object.freeze([
+  ExecutionMode.OBSERVE,
+  ExecutionMode.MANUAL_APPROVAL,
+  ExecutionMode.LIMITED_AUTO,
+  ExecutionMode.FULL_AUTO,
+]);
+
+function rungOf(mode: ExecutionMode): number {
+  return EXECUTION_MODE_LADDER.indexOf(mode);
+}
+
+export function canTransitionExecutionMode(from: ExecutionMode, to: ExecutionMode): boolean {
+  const fromRung = rungOf(from);
+  const toRung = rungOf(to);
+  if (fromRung < 0 || toRung < 0 || fromRung === toRung) return false;
+  // Down: any distance. Up: exactly one rung.
+  return toRung < fromRung || toRung === fromRung + 1;
+}
+
+export function assertExecutionModeTransition(from: ExecutionMode, to: ExecutionMode): void {
+  if (!canTransitionExecutionMode(from, to)) {
+    throw new IllegalTransitionError('execution mode', from, to);
+  }
+}
+
+/** True when the mode submits orders without waiting for a person. */
+export function isAutomatic(mode: ExecutionMode): boolean {
+  return mode === ExecutionMode.LIMITED_AUTO || mode === ExecutionMode.FULL_AUTO;
 }

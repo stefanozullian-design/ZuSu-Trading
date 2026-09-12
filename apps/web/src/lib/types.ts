@@ -717,3 +717,33 @@ export interface ReconciliationRun {
   differences: ReconciliationDifference[];
   detail: string;
 }
+
+export type ExecutionModeName = 'OBSERVE' | 'MANUAL_APPROVAL' | 'LIMITED_AUTO' | 'FULL_AUTO';
+
+export interface AutomationConfig {
+  configId: string;
+  strategyName: string;
+  version: number;
+  portfolioId: string;
+  portfolioName: string;
+  environment: string;
+  isEnabled: boolean;
+  mode: ExecutionModeName;
+  promotedById: string | null;
+}
+
+/** The eight conditions for going live. UNVERIFIABLE is not a pass. */
+export interface ReadinessReport {
+  configId: string;
+  portfolioId: string;
+  currentMode: ExecutionModeName;
+  nextMode: ExecutionModeName | null;
+  ready: boolean;
+  summary: string;
+  checks: {
+    key: string;
+    label: string;
+    state: 'PASS' | 'FAIL' | 'UNVERIFIABLE';
+    detail: string;
+  }[];
+}

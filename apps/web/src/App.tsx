@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   CandlestickChart,
+  Gauge,
   LogOut,
   Radar,
   ScrollText,
@@ -27,6 +28,7 @@ import { ScannerPage } from '@/pages/ScannerPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
 import { PerformancePage } from '@/pages/PerformancePage';
+import { AutomationPage } from '@/pages/AutomationPage';
 import { RiskPage } from '@/pages/RiskPage';
 import { TradingPage } from '@/pages/TradingPage';
 import { cn } from '@/lib/utils';
@@ -109,6 +111,13 @@ function Shell() {
                 label="Risk"
               />
             )}
+            {can('strategy:read') && (
+              <NavItem
+                to="/automation"
+                icon={<Gauge className="h-4 w-4" aria-hidden />}
+                label="Automation"
+              />
+            )}
             {can('backtest:read') && (
               <NavItem
                 to="/backtests"
@@ -170,6 +179,10 @@ function Shell() {
           element={can('performance:read') ? <PerformancePage /> : <Navigate to="/" />}
         />
         <Route path="/risk" element={can('risk:read') ? <RiskPage /> : <Navigate to="/" />} />
+        <Route
+          path="/automation"
+          element={can('strategy:read') ? <AutomationPage /> : <Navigate to="/" />}
+        />
         <Route
           path="/backtests"
           element={can('backtest:read') ? <BacktestPage /> : <Navigate to="/" />}

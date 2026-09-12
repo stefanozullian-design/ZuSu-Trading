@@ -1,7 +1,6 @@
 # Build status
 
-**Current phase: 8 — Broker. Complete.** Phase 9 (the promotion ladder to live)
-is next.
+**Current phase: 9 — Live trading. Complete.** All nine phases are built.
 **Live trading: still not possible, now by three gates rather than by absence.**
 The live adapter exists and can _read_ a Robinhood account, because
 reconciliation has to be able to look at an account it may not touch. Placing an
@@ -454,6 +453,56 @@ because a fabricated execution id that looks real is worse than an honest gap.
 API from this deployment — the adapter is built against the published contract
 and exercised through a fake transport. The three gates are what make that safe
 to ship: the code path exists, and it cannot reach the venue.
+
+### Phase 9 — Live trading and the automation ladder
+
+| Step                     | State                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| 1. Live-readiness gate   | Done — the roadmap's eight conditions as eight independent checks, each with its own evidence.                   |
+| 2. Three-valued answers  | Done — PASS / FAIL / UNVERIFIABLE, and UNVERIFIABLE blocks.                                                      |
+| 3. The automation ladder | Done — OBSERVE → MANUAL_APPROVAL → LIMITED_AUTO → FULL_AUTO, one rung per human act.                             |
+| 4. Confirmation          | Done — raising requires typing "I authorise &lt;RUNG&gt;"; lowering requires nothing and is never refused.       |
+| 5. Automatic execution   | Done — one scheduler job, which re-checks all eight conditions before every order.                               |
+| 6. Attribution           | Done — orders are placed in the promoter's name and audited as SCHEDULER, so "did a person click" is answerable. |
+| 7. The Automation page   | Done — `/automation`, all eight conditions shown, passes included.                                               |
+
+**This is the one place the scheduler can cause a trade, and it is worth being
+exact about it.** Through Phase 8 the rule was "a scheduled job may stop trading
+and may never start any". Phase 9 adds a job that can place an order — and
+cannot decide to. It acts only on a configuration a person raised to
+LIMITED_AUTO or FULL_AUTO, one rung at a time, with a typed confirmation,
+against an all-pass report; it places orders in that person's name; and it
+stops the instant any of the eight stops holding. The authority is still human.
+It is granted ahead of time instead of per trade, which is what automation is.
+
+**Readiness is a condition of every order, not of the promotion.** A strategy
+promoted on Monday against a healthy broker is not entitled to trade on Friday
+against a broken one. `runAutomatic` re-runs the full report before it places
+anything, and defers every waiting recommendation with the reason if it fails.
+
+**Nothing is placed under nobody's name.** The promoter's id is stored when the
+rung is raised and cleared when it is lowered. A configuration found on an
+automatic rung without one — the shape a bad migration or a direct database edit
+leaves — places nothing and says why. If the promoter is deactivated, automation
+stops: an automated system acting under no one's authority is precisely what
+this platform is built to not be.
+
+**LIMITED_AUTO is capped, and an over-cap trade is deferred rather than
+shrunk.** At most three orders a day and 2,500 per order by default. A trade too
+big for the cap is exactly the one a person should look at, so it waits rather
+than being quietly resized into something nobody chose.
+
+**The paper test is measured on cash, and the convention is stated.** A Position
+carries no strategy id — several strategies can hold the same symbol, and
+splitting a shared position between them would be a guess presented as a
+measurement. So the paper result is computed from the strategy's own filled
+paper orders: what its buys cost, what its sells brought in, minus its fees. The
+one thing that convention does not see is a position the strategy opened and a
+person closed by hand; that trade goes uncounted, which understates rather than
+flatters the result — the safe direction for a gate to be wrong in.
+
+**What ships on:** every seeded configuration sits at MANUAL_APPROVAL and is
+disabled. A fresh install cannot trade before its owner has read a screen.
 
 ## Blocked
 

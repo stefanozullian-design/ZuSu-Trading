@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { OrderStatus, SignalStatus } from './enums.js';
+import { ExecutionMode, OrderStatus, SignalStatus } from './enums.js';
 import {
   IllegalTransitionError,
   ORDER_TRANSITIONS,
   SIGNAL_TRANSITIONS,
+  assertExecutionModeTransition,
   assertOrderTransition,
   assertSignalTransition,
+  canTransitionExecutionMode,
   canTransitionOrder,
   canTransitionSignal,
+  isAutomatic,
   isTerminalOrderStatus,
 } from './lifecycle.js';
 
@@ -75,5 +78,61 @@ describe('signal lifecycle', () => {
     expect(() => assertSignalTransition(SignalStatus.REJECTED, SignalStatus.APPROVED)).toThrow(
       IllegalTransitionError,
     );
+  });
+});
+
+describe('the automation ladder', () => {
+  it('climbs exactly one rung at a time', () => {
+    expect(canTransitionExecutionMode(ExecutionMode.OBSERVE, ExecutionMode.MANUAL_APPROVAL)).toBe(
+      true,
+    );
+    expect(
+      canTransitionExecutionMode(ExecutionMode.MANUAL_APPROVAL, ExecutionMode.LIMITED_AUTO),
+    ).toBe(true);
+    expect(canTransitionExecutionMode(ExecutionMode.LIMITED_AUTO, ExecutionMode.FULL_AUTO)).toBe(
+      true,
+    );
+  });
+
+  it('refuses to skip a rung on the way up', () => {
+    // The point of LIMITED_AUTO is to be the period someone watches it trade
+    // under caps. Skipping it skips the only evidence the live version works.
+    expect(canTransitionExecutionMode(ExecutionMode.MANUAL_APPROVAL, ExecutionMode.FULL_AUTO)).toBe(
+      false,
+    );
+    expect(canTransitionExecutionMode(ExecutionMode.OBSERVE, ExecutionMode.LIMITED_AUTO)).toBe(
+      false,
+    );
+    expect(canTransitionExecutionMode(ExecutionMode.OBSERVE, ExecutionMode.FULL_AUTO)).toBe(false);
+  });
+
+  it('allows any descent, from anywhere to anywhere below', () => {
+    // A brake a state machine can decline to apply is not a brake.
+    expect(canTransitionExecutionMode(ExecutionMode.FULL_AUTO, ExecutionMode.OBSERVE)).toBe(true);
+    expect(canTransitionExecutionMode(ExecutionMode.FULL_AUTO, ExecutionMode.MANUAL_APPROVAL)).toBe(
+      true,
+    );
+    expect(canTransitionExecutionMode(ExecutionMode.LIMITED_AUTO, ExecutionMode.OBSERVE)).toBe(
+      true,
+    );
+  });
+
+  it('treats staying put as a non-transition', () => {
+    expect(canTransitionExecutionMode(ExecutionMode.FULL_AUTO, ExecutionMode.FULL_AUTO)).toBe(
+      false,
+    );
+  });
+
+  it('names the entity in the error, so a log line is readable', () => {
+    expect(() =>
+      assertExecutionModeTransition(ExecutionMode.OBSERVE, ExecutionMode.FULL_AUTO),
+    ).toThrow(/execution mode/);
+  });
+
+  it('knows which rungs submit without a person', () => {
+    expect(isAutomatic(ExecutionMode.OBSERVE)).toBe(false);
+    expect(isAutomatic(ExecutionMode.MANUAL_APPROVAL)).toBe(false);
+    expect(isAutomatic(ExecutionMode.LIMITED_AUTO)).toBe(true);
+    expect(isAutomatic(ExecutionMode.FULL_AUTO)).toBe(true);
   });
 });

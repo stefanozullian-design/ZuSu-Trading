@@ -194,6 +194,13 @@ export class OrderService {
       timeInForce?: TimeInForce;
       note?: string;
       at?: Date;
+      /**
+       * Set by the automation service. It does not relax a single check — the
+       * same permission, the same portfolio access, the same risk engine. All
+       * it changes is the audit trail, which then says SCHEDULER rather than
+       * USER, so "did a person click this" stays an answerable question.
+       */
+      automated?: boolean;
     } = {},
   ): Promise<OrderView> {
     this.access.assertPermission(principal, Permission.SIGNAL_APPROVE);
@@ -249,7 +256,8 @@ export class OrderService {
     await this.audit.record({
       action: 'SIGNAL_APPROVED',
       actorUserId: principal.id,
-      actorType: 'USER',
+      actorType: input.automated ? 'SCHEDULER' : 'USER',
+      ...(input.automated && { actorLabel: 'automation' }),
       entityType: 'signal',
       entityId: signal.id,
       portfolioId: signal.portfolioId,

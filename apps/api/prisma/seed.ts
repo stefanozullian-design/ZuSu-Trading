@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   await seedHistory(portfolio.id);
   await seedWatchlist(portfolio.id, instruments);
   await seedStrategies(users.admin.id);
+  await seedAutomationConfigs(portfolio.id);
 
   await audit.record({
     action: AuditAction.PORTFOLIO_MODIFIED,
@@ -487,6 +488,39 @@ async function seedStrategies(authorId: string): Promise<void> {
         riskSettings: spec.riskSettings,
         allowedRegimes: spec.allowedRegimes ?? undefined,
         sessionScope: 'REGULAR_ONLY',
+      },
+    });
+  }
+}
+
+/**
+ * Pairs each seeded strategy with the demo portfolio, at MANUAL_APPROVAL.
+ *
+ * That is the rung the platform ships on and the only one that is not a
+ * decision: every order waits for a person. Seeding anything automatic would
+ * mean a fresh install could trade before its owner had read a single screen.
+ */
+async function seedAutomationConfigs(portfolioId: string): Promise<void> {
+  const strategies = await db.strategy.findMany({
+    include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
+  });
+
+  for (const strategy of strategies) {
+    const version = strategy.versions[0];
+    if (!version) continue;
+    const existing = await db.strategyPortfolioConfig.findUnique({
+      where: { portfolioId_strategyId: { portfolioId, strategyId: strategy.id } },
+    });
+    if (existing) continue;
+
+    await db.strategyPortfolioConfig.create({
+      data: {
+        strategyId: strategy.id,
+        strategyVersionId: version.id,
+        portfolioId,
+        isEnabled: false,
+        executionMode: 'MANUAL_APPROVAL',
+        positionSizing: { method: 'FIXED_FRACTIONAL', riskPerTradePct: '1' },
       },
     });
   }

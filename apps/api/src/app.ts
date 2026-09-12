@@ -19,6 +19,7 @@ import { registerNotificationRoutes } from './modules/notifications/notification
 import { registerOrderRoutes } from './modules/orders/order.routes.js';
 import { registerPerformanceRoutes } from './modules/performance/performance.routes.js';
 import { verifyAccessToken } from './modules/auth/tokens.js';
+import { registerAutomationRoutes } from './modules/automation/automation.routes.js';
 import { registerBrokerRoutes } from './modules/broker/broker.routes.js';
 import { registerClientRoutes } from './modules/clients/client.routes.js';
 import { registerSystemRoutes } from './modules/health/health.routes.js';
@@ -109,6 +110,9 @@ export async function buildApp(options: { container?: AppContainer } = {}): Prom
     prefix: '/api/market-data',
   });
   await app.register(async (api) => registerRiskRoutes(api, container), { prefix: '/api/risk' });
+  await app.register(async (api) => registerAutomationRoutes(api, container), {
+    prefix: '/api/automation',
+  });
   await app.register(async (api) => registerStrategyRoutes(api, container), {
     prefix: '/api/strategies',
   });

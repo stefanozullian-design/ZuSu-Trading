@@ -4,10 +4,12 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 8 complete.** The live broker adapter, the
-defined-risk options builder and reconciliation are built, and live trading
-remains switched off: `ALLOW_LIVE_TRADING` is false, and two further gates sit
-behind it. Phase 9 (the promotion ladder to live) is next.
+Current position: **Phase 9 complete — the build is done.** The automation
+ladder, the eight-condition live-readiness gate and the one scheduled job that
+may place an order are built. Live trading remains switched off:
+`ALLOW_LIVE_TRADING` is false, every seeded configuration sits at
+MANUAL_APPROVAL, and nothing automatic runs against a LIVE portfolio however it
+was promoted.
 Phase 6 remains unverified against the live Anthropic API, which needs a key
 this deployment does not have.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
@@ -173,17 +175,28 @@ Exit criteria: a crash immediately after submission never produces a duplicate
 order; internal records and broker records are reconciled, and a mismatch halts
 trading for the affected portfolio rather than being silently overwritten.
 
-## Phase 9 — Live trading
+## Phase 9 — Live trading ✅
 
 Manual approval only, then paper → manual live → limited auto → full auto, each
 step promoted explicitly by a person.
 
-A strategy may go live only when: a backtest is complete, a paper test meets its
-configured criteria, risk limits and position sizing are configured, a stop loss is
-set, the kill switch is available, the broker connection is verified, reconciliation
-is healthy, and a user confirms.
+The eight conditions are a service, `LiveReadinessService`, and each is checked
+independently with its own evidence: a completed backtest of at least 20 trades
+(the stored result, not the stage label), a profitable paper test of at least 10
+round trips over at least 5 days, active risk limits, recorded position sizing,
+a stop in the definition, an armed kill switch, a broker that answers a health
+check, and a reconciliation that matched within the last 24 hours.
 
-**Full automation is never activated automatically.**
+A check that cannot be run reports `UNVERIFIABLE` and blocks. "We have never
+reconciled" and "we reconciled and it matched" are different answers, and the
+one place that distinction gets quietly lost is a readiness gate.
+
+**Full automation is never activated automatically**, enforced four ways:
+one rung per promotion (so FULL_AUTO is at least two deliberate decisions after
+MANUAL_APPROVAL), the `strategy:promote` permission (administrator-only), a
+typed confirmation naming the rung, and an all-pass readiness report. Lowering
+needs none of them and is never refused — a brake a state machine can decline
+to apply is not a brake.
 
 ---
 

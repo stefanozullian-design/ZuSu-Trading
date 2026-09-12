@@ -17,12 +17,21 @@ import type { AppContainer } from '../../container.js';
 /**
  * The scheduler (§57, §58).
  *
- * The rule that shapes every job here: **a scheduled job may stop trading, and
- * may never start any.** So this file syncs calendars, writes snapshots, polls
- * orders for fills that already happened, evaluates live strategies into
- * *recommendations*, persists health checks and runs the drawdown breaker — and
- * contains nothing that approves a signal or places an order. The approval
- * route needs a person, and no timer is a person.
+ * The rule that shaped every job here through Phase 8: **a scheduled job may
+ * stop trading, and may never start any.** Phase 9 changes that in exactly one
+ * place and it is worth stating plainly rather than burying: the `automation`
+ * job can place an order.
+ *
+ * What it cannot do is decide to. It acts only on a configuration a person
+ * deliberately raised to LIMITED_AUTO or FULL_AUTO, one rung at a time, with a
+ * typed confirmation, against an all-pass readiness report; it places orders in
+ * that person's name; it re-checks every one of the eight conditions before
+ * each order; and it stops the instant any of them stops holding. No timer
+ * raises a rung, and no timer is a person — the authority is still human, it is
+ * just granted ahead of time instead of per trade.
+ *
+ * Every other job is as it was: calendars, snapshots, order polling, strategy
+ * evaluation into *recommendations*, health checks and the drawdown breaker.
  *
  * Three more properties, each learned from how schedulers usually fail:
  *
@@ -94,6 +103,11 @@ export class Scheduler {
     });
     this.define({ name: 'daily-snapshot', intervalMs: HOUR, run: () => this.writeSnapshots() });
     this.define({ name: 'risk-breakers', intervalMs: 5 * MINUTE, run: () => this.runBreakers() });
+    this.define({
+      name: 'automation',
+      intervalMs: MINUTE,
+      run: () => this.runAutomation(),
+    });
 
     if (this.options.autoStart) this.start();
   }
@@ -270,6 +284,31 @@ export class Scheduler {
       written += 1;
     }
     return `wrote ${String(written)} portfolio snapshots`;
+  }
+
+  /**
+   * Places orders for configurations a person has put on an automatic rung.
+   *
+   * This is the one job that can cause a trade, and it is worth being precise
+   * about what it can and cannot do. It cannot raise a mode, enable a
+   * configuration, or waive a check: every order it places re-verifies all
+   * eight live-readiness conditions and goes through the same risk engine and
+   * trading gate as a hand-approved one. What it does is act on an authority a
+   * person granted, in that person's name, under caps that person accepted —
+   * and it stops the moment any of that stops being true.
+   *
+   * With no configuration on an automatic rung, which is the shipped state,
+   * this job does nothing at all.
+   */
+  private async runAutomation(): Promise<string> {
+    const runs = await this.container.automation.runAutomatic();
+    if (runs.length === 0) return 'no configuration is on an automatic rung';
+    const placed = runs.reduce((total, run) => total + run.placed.length, 0);
+    const deferred = runs.reduce((total, run) => total + run.deferred.length, 0);
+    return (
+      `${String(runs.length)} automatic configurations: ${String(placed)} orders placed, ` +
+      `${String(deferred)} recommendations left for a person`
+    );
   }
 
   private async runBreakers(): Promise<string> {
