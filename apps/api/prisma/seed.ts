@@ -329,9 +329,16 @@ async function seedWatchlist(portfolioId: string, instruments: { id: string }[])
 }
 
 /**
- * Preconfigured strategy definitions (§74). They are stored as versioned JSON
- * and left at DRAFT: the strategy engine that evaluates them arrives in Phase 3,
- * and nothing here pretends they are running.
+ * Preconfigured strategy definitions (§74).
+ *
+ * These are written in the real rule language — the same nested AND/OR/NOT
+ * records the strategy engine evaluates — and every field they reference is
+ * one the indicator engine actually computes. An earlier version of this seed
+ * invented a plausible-looking shape instead, which meant the shipped examples
+ * could not be read, evaluated, or promoted: demo data the product cannot use
+ * is fiction, not a demo.
+ *
+ * They are left at DRAFT. Nothing here pretends to be running.
  */
 async function seedStrategies(authorId: string): Promise<void> {
   const strategies = [
@@ -339,63 +346,126 @@ async function seedStrategies(authorId: string): Promise<void> {
       name: 'RSI Oversold Bounce',
       description: 'Buys oversold pullbacks that are still above the 50-period average.',
       definition: {
-        type: 'AND',
-        conditions: [
-          { type: 'INDICATOR', indicator: 'RSI', period: 14, operator: 'LT', value: 30 },
-          {
-            type: 'INDICATOR_COMPARE',
-            left: 'PRICE',
-            operator: 'GT',
-            right: { indicator: 'SMA', period: 50 },
-          },
-          { type: 'VOLUME', metric: 'RELATIVE_VOLUME', operator: 'GT', value: 1.5 },
-          {
-            type: 'OR',
-            conditions: [
-              { type: 'PATTERN', pattern: 'BULLISH_DIVERGENCE' },
-              { type: 'CROSS', left: 'PRICE', direction: 'ABOVE', right: { indicator: 'VWAP' } },
+        timeframe: '5m',
+        watchlistId: null,
+        entry: {
+          direction: 'LONG',
+          when: {
+            type: 'all',
+            children: [
+              { type: 'condition', field: 'rsi14', operator: 'lt', operand: { constant: '30' } },
+              { type: 'condition', field: 'close', operator: 'gt', operand: { field: 'sma50' } },
+              {
+                type: 'any',
+                children: [
+                  {
+                    type: 'condition',
+                    field: 'close',
+                    operator: 'crosses_above',
+                    operand: { field: 'vwap' },
+                  },
+                  {
+                    type: 'condition',
+                    field: 'stochasticK',
+                    operator: 'crosses_above',
+                    operand: { field: 'stochasticD' },
+                  },
+                ],
+              },
             ],
           },
-        ],
+        },
+        exit: {
+          when: { type: 'condition', field: 'rsi14', operator: 'gt', operand: { constant: '65' } },
+        },
+        stop: { kind: 'PERCENT', value: '2' },
+        target: { kind: 'RISK_MULTIPLE', value: '2.4' },
       },
-      riskSettings: { stopLossPct: 2, takeProfitPct: 4.8, maxPositionPct: 5, sizing: 'RISK_BASED' },
+      riskSettings: { maxConcurrentPositions: 3, maxNotionalPerTrade: '5000', minBars: 60 },
     },
     {
       name: 'MACD Crossover',
-      description: 'Enters on a MACD signal-line crossover confirmed by trend strength.',
+      description: 'Enters on a MACD signal-line crossover while price holds its fast average.',
       definition: {
-        type: 'AND',
-        conditions: [
-          {
-            type: 'CROSS',
-            left: { indicator: 'MACD', fast: 12, slow: 26 },
-            direction: 'ABOVE',
-            right: { indicator: 'MACD_SIGNAL', period: 9 },
+        timeframe: '5m',
+        watchlistId: null,
+        entry: {
+          direction: 'LONG',
+          when: {
+            type: 'all',
+            children: [
+              {
+                type: 'condition',
+                field: 'macd',
+                operator: 'crosses_above',
+                operand: { field: 'macdSignal' },
+              },
+              { type: 'condition', field: 'close', operator: 'gt', operand: { field: 'ema12' } },
+            ],
           },
-          { type: 'INDICATOR', indicator: 'ADX', period: 14, operator: 'GT', value: 20 },
-          { type: 'TIME', field: 'MINUTES_AFTER_OPEN', operator: 'GT', value: 15 },
-        ],
+        },
+        exit: {
+          when: {
+            type: 'condition',
+            field: 'macd',
+            operator: 'crosses_below',
+            operand: { field: 'macdSignal' },
+          },
+        },
+        stop: { kind: 'ATR', value: '1.5' },
+        target: { kind: 'ATR', value: '3' },
       },
-      riskSettings: { stopLossAtr: 1.5, takeProfitAtr: 3, maxPositionPct: 4, sizing: 'ATR_BASED' },
+      riskSettings: { maxConcurrentPositions: 2, maxNotionalPerTrade: '4000', minBars: 80 },
     },
     {
-      name: 'Opening Range Breakout',
-      description: 'Trades a breakout of the first 30 minutes on above-average volume.',
+      name: 'Bollinger Reversion',
+      description: 'Fades a stretch below the lower band once momentum stops falling.',
       definition: {
-        type: 'AND',
-        conditions: [
-          { type: 'STRUCTURE', pattern: 'BREAKOUT', lookbackMinutes: 30 },
-          { type: 'VOLUME', metric: 'RELATIVE_VOLUME', operator: 'GT', value: 2 },
-          { type: 'TIME', field: 'MINUTES_AFTER_OPEN', operator: 'BETWEEN', value: [30, 120] },
-        ],
+        timeframe: '5m',
+        watchlistId: null,
+        entry: {
+          direction: 'LONG',
+          when: {
+            type: 'all',
+            children: [
+              {
+                type: 'condition',
+                field: 'close',
+                operator: 'crosses_above',
+                operand: { field: 'bollingerLower' },
+              },
+              {
+                type: 'condition',
+                field: 'rsi14',
+                operator: 'between',
+                operand: { constant: '25' },
+                operandUpper: { constant: '45' },
+              },
+              {
+                type: 'not',
+                child: {
+                  type: 'condition',
+                  field: 'close',
+                  operator: 'gt',
+                  operand: { field: 'bollingerMiddle' },
+                },
+              },
+            ],
+          },
+        },
+        exit: {
+          when: {
+            type: 'condition',
+            field: 'close',
+            operator: 'gte',
+            operand: { field: 'bollingerMiddle' },
+          },
+        },
+        stop: { kind: 'PERCENT', value: '1.5' },
+        target: { kind: 'PERCENT', value: '2.5' },
       },
-      riskSettings: {
-        stopLossPct: 1.5,
-        takeProfitPct: 4.5,
-        maxPositionPct: 4,
-        sizing: 'RISK_BASED',
-      },
-      allowedRegimes: ['TRENDING', 'HIGH_VOLATILITY'],
+      riskSettings: { maxConcurrentPositions: 2, maxNotionalPerTrade: '4000', minBars: 60 },
+      allowedRegimes: ['RANGING', 'HIGH_VOLATILITY'],
     },
   ];
 

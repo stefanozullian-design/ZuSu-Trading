@@ -1,4 +1,20 @@
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
+
+/**
+ * Where the administrator's TOTP secret is kept for the length of a run.
+ *
+ * Enrolment happens once per seeded database, and only the enrolment screen
+ * ever shows the secret — so a second admin sign-in in the same run has no way
+ * to generate a code unless the first one wrote it down. This file is that
+ * note. It lives in the artifacts directory, is a demo secret for a demo
+ * database, and is rewritten by each `global-setup` reseed.
+ */
+const ADMIN_SECRET_FILE = join(
+  dirname(new URL(import.meta.url).pathname),
+  '../.artifacts/admin-mfa-secret',
+);
 
 /** Seeded accounts. Passwords are demo-only and live in the seed script. */
 export const ACCOUNTS = {
@@ -59,10 +75,21 @@ export async function signInAdmin(page: Page): Promise<void> {
     const secret = (await page.locator('code').first().innerText()).replace(/\s/g, '');
     expect(secret.length).toBeGreaterThan(10);
 
+    mkdirSync(dirname(ADMIN_SECRET_FILE), { recursive: true });
+    writeFileSync(ADMIN_SECRET_FILE, secret, 'utf8');
+
     await page.getByLabel(/six-digit code/i).fill(authenticator.generate(secret));
     await enrolling.click();
   } else {
-    throw new Error('Admin already has MFA enrolled; this suite expects a freshly seeded database');
+    if (!existsSync(ADMIN_SECRET_FILE)) {
+      throw new Error(
+        'Admin MFA is already enrolled and this run never saw the secret. ' +
+          'Reseed the end-to-end database (global-setup does this) and try again.',
+      );
+    }
+    const secret = readFileSync(ADMIN_SECRET_FILE, 'utf8').trim();
+    await page.getByLabel(/six-digit code/i).fill(authenticator.generate(secret));
+    await verifying.click();
   }
 
   await expect(page.getByRole('link', { name: /dashboard/i })).toBeVisible();

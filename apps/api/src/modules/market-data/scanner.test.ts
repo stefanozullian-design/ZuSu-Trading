@@ -171,7 +171,9 @@ describe('evaluateSymbol — crossings', () => {
     const { skip } = evaluateSymbol('AAPL', s, [
       { field: 'close', operator: 'crosses_above', operand: { field: 'sma20' } },
     ]);
-    expect(skip?.reason).toContain('two bars');
+    // The reason comes from the per-condition evaluator, which knows precisely
+    // which bar it was missing.
+    expect(skip?.reason).toContain('needs a previous bar');
   });
 
   it('skips when the previous bar has no value for the field', () => {

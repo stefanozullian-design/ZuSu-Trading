@@ -106,6 +106,13 @@ export const SignalStatus = {
 } as const;
 export type SignalStatus = (typeof SignalStatus)[keyof typeof SignalStatus];
 
+/** Mirrors `SignalDirection` in the Prisma schema. */
+export const SignalDirection = {
+  LONG: 'LONG',
+  SHORT: 'SHORT',
+} as const;
+export type SignalDirection = (typeof SignalDirection)[keyof typeof SignalDirection];
+
 export const StrategyStage = {
   DRAFT: 'DRAFT',
   BACKTEST: 'BACKTEST',
@@ -116,6 +123,20 @@ export const StrategyStage = {
   RETIRED: 'RETIRED',
 } as const;
 export type StrategyStage = (typeof StrategyStage)[keyof typeof StrategyStage];
+
+/**
+ * Which sessions a strategy is allowed to act in.
+ *
+ * Mirrors `TradingSessionScope` in the Prisma schema, which had no counterpart
+ * here — the two are meant to match member for member.
+ */
+export const TradingSessionScope = {
+  REGULAR_ONLY: 'REGULAR_ONLY',
+  INCLUDE_PRE_MARKET: 'INCLUDE_PRE_MARKET',
+  INCLUDE_AFTER_HOURS: 'INCLUDE_AFTER_HOURS',
+  ALL_AVAILABLE: 'ALL_AVAILABLE',
+} as const;
+export type TradingSessionScope = (typeof TradingSessionScope)[keyof typeof TradingSessionScope];
 
 export const MarketSession = {
   CLOSED: 'CLOSED',

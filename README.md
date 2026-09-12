@@ -72,7 +72,33 @@ expressible. Symbols whose indicators are still in warm-up appear under
 be told apart from an unanswerable one. Filters can be saved and re-run;
 `backfill:demo` seeds three examples.
 
-To point both pages at real data instead of the simulator, set
+### The Strategies page
+
+`/strategies` is the no-code builder. A rule is assembled from selects —
+nested **all of** / **any of** / **not** groups over the same conditions the
+scanner uses — and it is data, never code: nothing entered there is ever
+executed.
+
+Three rules are visible on the page rather than buried in the schema:
+
+- **A version cannot be edited.** There is no edit form, because the database
+  refuses the update. Changing a rule adds a version, which starts back at
+  DRAFT. The lineage is kept, so "what were we running in August" has an
+  answer.
+- **Promotion is one rung at a time**: DRAFT → BACKTEST → PAPER → REVIEW →
+  APPROVED → LIVE. A version cannot be approved without a stop loss, the
+  approval records who signed it, and going live is a separate step from being
+  approved — so approved never silently means running. Authoring needs
+  `strategy:write`, which a manager has; promoting needs `strategy:promote`,
+  which stops at admin.
+- **A signal is a recommendation.** Evaluating a version records signals at
+  `CREATED` and stops. No route in this API can turn one into an order.
+
+Evaluation accounts for every symbol it looked at: fired, rejected, already
+signalled on this bar, or **could not be judged** with the reason — a rule that
+cannot be evaluated returns unknown, and unknown is never permission to trade.
+
+To point the market pages at real data instead of the simulator, set
 `MARKET_DATA_PROVIDER=MASSIVE` and `MASSIVE_API_KEY` in `.env`. Massive.com is
 the former Polygon.io; its free tier is end-of-day only, so intraday needs a
 paid plan.
@@ -82,8 +108,8 @@ API docs are at <http://localhost:4000/docs>.
 ### Tests
 
 ```bash
-npm test              # 487 unit and integration tests
-npm run test:e2e      # 38 Playwright specs against a real browser
+npm test              # 579 unit and integration tests
+npm run test:e2e      # 46 Playwright specs against a real browser
 ```
 
 The end-to-end suite manages its own database, API and web server. It migrates,

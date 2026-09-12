@@ -4,7 +4,7 @@ Phases are sequential. A phase does not start until the previous one's tests pas
 Nothing about live trading is built early — the venue integration is Phase 8, and
 full automation is never switched on automatically.
 
-Current position: **Phase 2 complete.** Phase 3 (strategies) is next.
+Current position: **Phase 3 complete.** Phase 4 (backtesting) is next.
 See [BUILD_STATUS.md](./BUILD_STATUS.md).
 
 ---
@@ -27,7 +27,7 @@ duplicated and impossible data is detected and blocks new trades; the calendar
 answers "is this symbol tradable right now" without a hard-coded 09:30–16:00;
 indicators are computed locally and unit-tested against known series.
 
-## Phase 3 — Strategies
+## Phase 3 — Strategies ✅
 
 No-code strategy builder, strategy engine over versioned JSON rule trees, strategy
 versioning with explicit approval before a live version changes, signal engine with
@@ -35,6 +35,15 @@ deterministic dedupe keys.
 
 Exit criteria: a strategy can be built through the UI without code; the same market
 event never produces two signals; a live strategy version cannot change silently.
+
+All three hold. A rule is a nested record of conditions evaluated in three-valued
+logic — unknown is never permission. Dedupe is a unique index on a key built from
+strategy, version, symbol, portfolio and bar open time, so a replay of the same bar
+writes nothing. A version is frozen by a database trigger from the moment it is
+written: changing a rule adds a version, which starts back at DRAFT and climbs
+DRAFT → BACKTEST → PAPER → REVIEW → APPROVED → LIVE one rung at a time, cannot be
+approved without a stop loss, records who signed the approval, and cannot go live
+beside another live version. Approved is not running: the last step is separate.
 
 ## Phase 4 — Backtesting
 

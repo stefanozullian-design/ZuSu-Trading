@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -44,6 +45,11 @@ function run(command: string, args: string[]): void {
 }
 
 export default function globalSetup(): void {
+  // The administrator's MFA secret belongs to the database that issued it.
+  // Reseeding invalidates it, and a stale note would send the next admin
+  // sign-in into a loop of rejected codes.
+  rmSync(path.join(repoRoot, 'e2e/.artifacts/admin-mfa-secret'), { force: true });
+
   // `migrate reset --force` drops and recreates, so a rerun starts from a
   // known state rather than inheriting whatever the last run left behind.
   run('npx', ['--workspace', '@zusu/api', 'prisma', 'migrate', 'reset', '--force', '--skip-seed']);

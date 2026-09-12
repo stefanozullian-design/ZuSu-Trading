@@ -1,4 +1,4 @@
-import { OrderStatus, SignalStatus } from './enums.js';
+import { OrderStatus, SignalStatus, StrategyStage } from './enums.js';
 
 /**
  * Explicit state machines. Nothing in the system may represent a lifecycle with
@@ -164,7 +164,7 @@ export function isTerminalSignalStatus(status: SignalStatus): boolean {
 
 export class IllegalTransitionError extends Error {
   constructor(
-    readonly entity: 'order' | 'signal',
+    readonly entity: 'order' | 'signal' | 'strategy stage',
     readonly from: string,
     readonly to: string,
   ) {
@@ -179,4 +179,51 @@ export function assertOrderTransition(from: OrderStatus, to: OrderStatus): void 
 
 export function assertSignalTransition(from: SignalStatus, to: SignalStatus): void {
   if (!canTransitionSignal(from, to)) throw new IllegalTransitionError('signal', from, to);
+}
+
+/**
+ * Strategy stage progression (§10).
+ *
+ * A strategy walks DRAFT to LIVE one step at a time, and each step is taken by
+ * a person. Nothing skips ahead: a version cannot be approved without having
+ * been backtested and paper-traded, because the whole point of the ladder is
+ * that evidence accumulates before real money is involved.
+ *
+ * RETIRED is reachable from anywhere — stopping is always allowed. Going back
+ * to DRAFT is not: an approved definition is immutable, so a change means a
+ * new version, not a demotion of this one.
+ */
+export const STRATEGY_STAGE_TRANSITIONS: Readonly<Record<StrategyStage, readonly StrategyStage[]>> =
+  Object.freeze({
+    DRAFT: Object.freeze(['BACKTEST', 'RETIRED'] as StrategyStage[]),
+    BACKTEST: Object.freeze(['PAPER', 'DRAFT', 'RETIRED'] as StrategyStage[]),
+    PAPER: Object.freeze(['REVIEW', 'BACKTEST', 'RETIRED'] as StrategyStage[]),
+    REVIEW: Object.freeze(['APPROVED', 'PAPER', 'RETIRED'] as StrategyStage[]),
+    /** Approved but not yet switched on. The last step is separate on purpose. */
+    APPROVED: Object.freeze(['LIVE', 'RETIRED'] as StrategyStage[]),
+    LIVE: Object.freeze(['RETIRED'] as StrategyStage[]),
+    RETIRED: Object.freeze([] as StrategyStage[]),
+  });
+
+export function canTransitionStrategyStage(from: StrategyStage, to: StrategyStage): boolean {
+  return STRATEGY_STAGE_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * Every version's definition is frozen, from the moment it is written.
+ *
+ * There was a stage-based version of this ("frozen once APPROVED"), and it was
+ * a half-truth: a database trigger blocks any change to a definition at any
+ * stage, draft included. A helper that said a draft was editable would have
+ * had callers build an edit form that could only ever fail. Changing a rule
+ * means adding a version — there is no other path, at any stage.
+ */
+export function isStrategyDefinitionFrozen(_stage: StrategyStage): true {
+  return true;
+}
+
+export function assertStrategyStageTransition(from: StrategyStage, to: StrategyStage): void {
+  if (!canTransitionStrategyStage(from, to)) {
+    throw new IllegalTransitionError('strategy stage', from, to);
+  }
 }

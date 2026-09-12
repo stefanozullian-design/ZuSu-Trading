@@ -1,6 +1,6 @@
 # Build status
 
-**Current phase: 2 — Market data. Complete.** Phase 3 (strategies) is next.
+**Current phase: 3 — Strategies. Complete.** Phase 4 (backtesting) is next.
 **Live trading: not possible.** No route in this API can create an order, and
 `ALLOW_LIVE_TRADING` defaults to false.
 
@@ -40,11 +40,11 @@ Last updated: 2026-09-12
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Choose a provider            | Done — Massive.com. Free tier is end-of-day, Starter 15-minute delayed, real-time from Advanced. Options data needs Advanced.                                             |
 | 2. `MarketDataProvider` adapter | Done — interface, `MassiveProvider` and the provider registry, with 33 unit tests against a fake transport. Not yet exercised against the live API; no key is configured. |
-| 3. Data-quality layer           | Not started. Next.                                                                                                                                                        |
-| 4. Market-calendar engine       | Not started. See the `getCalendar` limitation below.                                                                                                                      |
-| 5. Indicator engine             | Not started.                                                                                                                                                              |
-| 6. Watchlists, scanner, charts  | Not started.                                                                                                                                                              |
-| 7. Playwright E2E suite         | Not started (scheduled for this phase).                                                                                                                                   |
+| 3. Data-quality layer           | Done — eight detectors, the only write path into market-data tables.                                                                                                      |
+| 4. Market-calendar engine       | Done — dated rows of absolute UTC instants. See the `getCalendar` limitation below.                                                                                       |
+| 5. Indicator engine             | Done — eleven indicators, each with a look-ahead proof.                                                                                                                   |
+| 6. Watchlists, scanner, charts  | Done — the Market and Scanner pages.                                                                                                                                      |
+| 7. Playwright E2E suite         | Done.                                                                                                                                                                     |
 
 `MarketDataQualityService` is the only path by which market data reaches the
 database, so `market_data_quotes` and `market_data_candles` cannot hold a row the
@@ -99,20 +99,72 @@ now asks it whenever an order names a symbol. `TradingGate.evaluate` and
 `assertCanTrade` take the evaluation instant as an input rather than reading the
 wall clock, so a gate decision is reproducible and auditable.
 
+### Phase 3 — Strategies
+
+| Step                         | State                                                                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Rule tree                 | Done — nested all/any/not over the scanner's condition language, evaluated in three-valued logic.                                                              |
+| 2. Versioning and the ladder | Done — frozen on write by a database trigger; DRAFT → BACKTEST → PAPER → REVIEW → APPROVED → LIVE, one rung at a time, signed at APPROVED, one live at a time. |
+| 3. Signal engine             | Done — deterministic dedupe key enforced by a unique index, full rule trace stored with each signal.                                                           |
+| 4. Routes                    | Done — `/api/strategies`, versions, promotion, evaluation, signals. None of them can place an order.                                                           |
+| 5. The builder UI            | Done — `/strategies`. A rule is assembled from selects; nothing typed there is ever executed.                                                                  |
+
+**The rule language is shared with the scanner.** `condition.ts` holds the
+fields, the operators and the evaluator; the scanner uses a flat list of them
+and the strategy engine nests them. Extracting it was the point: two expression
+editors would have been two dialects that eventually disagree about what
+"close crosses above sma50" means.
+
+**A rule's verdict is three-valued.** True, false, or unknown — and unknown is
+never permission. `all` is false if any child is false, unknown if any child is
+unknown, true only when every child is true; `any` mirrors it; `not` of unknown
+stays unknown. Nothing short-circuits, so the trace stored with a signal can
+answer "what else was true at the time" rather than only "it fired".
+
+**Depth stops at six, a group holds ten children, a tree holds sixty nodes.**
+The schema is an explicit depth ladder rather than a lazy recursive one,
+because a `z.lazy` schema has no depth limit at all — a hostile payload could
+nest until the evaluator ran out of stack. A rule nobody can read is also a
+rule nobody reviews honestly.
+
+**Dedupe is a database guarantee, not a check.** The key is
+`STRATEGY_vN:SYMBOL:PORTFOLIO:BAR_OPEN_TIME` minute-truncated, and a unique
+index on it is what makes a replay of the same bar write nothing. Two
+concurrent evaluations both reach the insert and exactly one wins; the loser is
+reported as a duplicate rather than an error.
+
+**A signal stops at CREATED.** The most any route here does is record a
+recommendation. There is no code path from this module to an order — the risk
+engine and the order manager that would provide one do not exist yet, so the
+boundary is structural rather than a promise.
+
+**Evaluation refuses a stale bar.** A live run against Friday's last candle on
+a Sunday would be a recommendation about a market that has not been open since.
+Bars more than five intervals old are reported as unjudgeable, with their age,
+rather than judged as current.
+
+**An unreadable version degrades rather than breaks.** Versions are immutable
+and kept forever, so a definition written in an older rule language will exist
+one day. It is reported with a null definition and shown as unreadable — never
+guessed at, never promoted, never evaluated, and never allowed to take the rest
+of the listing down with it. The Phase 1 seed's placeholder definitions were
+exactly this case, invented before the rule language existed; they are now
+written in the real one, because demo data the product cannot read is fiction.
+
 ### Test coverage
 
-487 unit and integration tests plus 38 end-to-end specs, all passing.
+579 unit and integration tests plus 46 end-to-end specs, all passing.
 
-| Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `apps/api` unit        | 262   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity) |
-| `apps/api` integration | 188   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating                                                                      |
-| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Suite                  | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared`      | 22    | decimal money, order/signal state machines, permission matrix, environment rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `apps/api` unit        | 283   | scrypt hashing, AES-256-GCM envelopes, circuit breaker, redaction and canonical JSON, market simulator determinism, Black-Scholes, demo broker (idempotency, partial fills, cancel races, buying power, fees), Massive.com adapter (null discipline, nanosecond clocks, pagination, splits, rate limits), quality detectors at their exact thresholds, calendar session boundaries and daylight-saving conversion, indicators against hand-computed series plus a look-ahead proof per indicator, the scan evaluator (crossings vs. levels, nulls never matching, boundary inclusivity), the rule tree's Kleene logic and depth limits               |
+| `apps/api` integration | 259   | login/MFA/refresh-rotation/reuse-detection/CSRF, client data isolation, RBAC, audit immutability and chain tampering, environment triggers, kill switch, portfolio accounting, market-data ingestion, the quality verdict's effect on the gate, calendar sync, per-symbol tradability, indicator loading and warm-up reporting, the market-data routes (permissions, decimals as strings, warm-up nulls, quality and calendar payloads), watchlist and scan lifecycle, the demo feed's bar grid and session gating, the strategy ladder and its gates, signal dedupe under concurrency, stale-bar refusal, and the strategy routes' permission split |
+| `apps/web`             | 15    | formatting (never renders unknown as zero), environment banner, kill-switch permission gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### End-to-end coverage
 
-38 Playwright specs drive a real browser against a real API and database. They
+46 Playwright specs drive a real browser against a real API and database. They
 exist for what the faster suites structurally cannot check: that the pieces are
 wired to each other, and that the honesty rules the backend enforces survive to
 the screen — a null indicator rendered as `— needs 50` rather than `0`, an
@@ -132,8 +184,11 @@ generated from the enrolment secret, as an authenticator app would), the
 dashboard's real figures and per-dependency health, role gating for viewer,
 manager and admin, the market page's provenance banner and chart geometry and
 crosshair, warm-up rendering, session and tradability verdicts, the scanner's
-matches and its unevaluable path, watchlist scoping, saved scans, and the kill
-switch including the API refusing a manager's release.
+matches and its unevaluable path, watchlist scoping, saved scans, building a
+nested strategy rule and reading it back in words, a manager who may author but
+not promote, an admin walking a version to live one rung at a time, a dry run
+accounting for every symbol it looked at, and the kill switch including the API
+refusing a manager's release.
 
 ## Blocked
 
@@ -215,20 +270,22 @@ These are deliberate and documented, not oversights:
 | No snapshot scheduler                        | `portfolio_snapshots` are written by the seed only; the daily writer belongs with the P&L engine (Phase 5).                                                                                                                                                                                            |
 | Health checks are not persisted on a timer   | `HealthService.persist` exists but nothing calls it on a schedule; that arrives with the scheduler (Phase 7).                                                                                                                                                                                          |
 | Container images build only in CI            | `docker build` cannot run in the development sandbox — its network policy blocks Docker Hub's blob CDN — so the two Dockerfiles are verified by CI's `docker` job rather than locally. Both images built successfully on the first run. Changes to either Dockerfile cannot be checked before pushing. |
-| No E2E browser suite                         | The dashboard was verified with a scripted browser run during development, but Playwright specs are not yet committed. Worth adding before the UI grows.                                                                                                                                               |
 | Rate limiting is per-process                 | Fine for a single instance; needs the Redis store before running more than one API replica.                                                                                                                                                                                                            |
 | `apps/web` has no route-level code splitting | Irrelevant at this size; revisit when charting and backtesting views land.                                                                                                                                                                                                                             |
 
 ## Next steps
 
-**Phase 2 — Market data. Complete.** One carried item remains, and it belongs
-to a later phase:
+**Phase 3 — Strategies. Complete.** Two carried items remain, both belonging to
+later phases:
 
 1. Schedule the calendar sync. Rows are generated on demand today; a deployment
    needs `MarketCalendarService.sync` run ahead of each period. The scheduler
    arrives in Phase 7, so until then it is a manual call.
+2. Schedule strategy evaluation. `SignalService.evaluateAllLive` exists and is
+   called by nothing on a timer; a live strategy is evaluated when someone asks
+   for it. The scheduler arrives in Phase 7.
 
-Phase 2's tests pass, so **Phase 3 — Strategies** may begin: the no-code
-strategy builder, the engine over versioned JSON rule trees, versioning with
-explicit approval before a live version changes, and the signal engine with
-deterministic dedupe keys.
+Phase 3's tests pass, so **Phase 4 — Backtesting** may begin: the historical
+data pipeline, the event-driven engine, performance metrics, walk-forward
+analysis, Monte Carlo, and parameter optimisation with overfitting warnings —
+with a look-ahead-bias suite as its exit criterion.

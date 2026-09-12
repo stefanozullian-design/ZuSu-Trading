@@ -13,6 +13,8 @@ import { IndicatorService } from './modules/market-data/indicator.service.js';
 import { MarketDataProviderRegistry } from './modules/market-data/provider-registry.js';
 import { MarketDataQualityService } from './modules/market-data/quality.service.js';
 import { ScanService } from './modules/market-data/scan.service.js';
+import { SignalService } from './modules/strategies/signal.service.js';
+import { StrategyService } from './modules/strategies/strategy.service.js';
 import { WatchlistService } from './modules/market-data/watchlist.service.js';
 import { PortfolioService } from './modules/portfolios/portfolio.service.js';
 import { AccessControl } from './modules/rbac/access-control.js';
@@ -40,6 +42,8 @@ export interface AppContainer {
   demoFeed: DemoFeed;
   watchlists: WatchlistService;
   scans: ScanService;
+  strategies: StrategyService;
+  signals: SignalService;
   dataQuality: MarketDataQualityService;
   killSwitch: KillSwitchService;
   gate: TradingGate;
@@ -63,6 +67,8 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const demoFeed = new DemoFeed(db, dataQuality, calendar, { seed: config().DEMO_SEED });
   const watchlists = new WatchlistService(db);
   const scans = new ScanService(db, indicators, watchlists);
+  const strategies = new StrategyService(db);
+  const signals = new SignalService(db, strategies, indicators, watchlists, calendar);
   const clients = new ClientService(db, access, audit);
   const portfolios = new PortfolioService(db, access, audit, brokers);
   const killSwitch = new KillSwitchService(db, access, audit, brokers, ws);
@@ -84,6 +90,8 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     demoFeed,
     watchlists,
     scans,
+    strategies,
+    signals,
     dataQuality,
     killSwitch,
     gate,

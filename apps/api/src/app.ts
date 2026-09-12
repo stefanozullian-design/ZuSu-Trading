@@ -21,6 +21,7 @@ import { registerMarketDataRoutes } from './modules/market-data/market-data.rout
 import { registerWatchlistRoutes } from './modules/market-data/watchlist.routes.js';
 import { registerPortfolioRoutes } from './modules/portfolios/portfolio.routes.js';
 import { registerRiskRoutes } from './modules/risk/risk.routes.js';
+import { registerStrategyRoutes } from './modules/strategies/strategy.routes.js';
 import { authPlugin } from './plugins/auth.js';
 import { errorHandlerPlugin } from './plugins/error-handler.js';
 import { ACCESS_COOKIE, securityPlugin } from './plugins/security.js';
@@ -103,6 +104,9 @@ export async function buildApp(options: { container?: AppContainer } = {}): Prom
     prefix: '/api/market-data',
   });
   await app.register(async (api) => registerRiskRoutes(api, container), { prefix: '/api/risk' });
+  await app.register(async (api) => registerStrategyRoutes(api, container), {
+    prefix: '/api/strategies',
+  });
   await app.register(async (api) => registerAuditRoutes(api, container), { prefix: '/api/audit' });
   await app.register(async (api) => registerSystemRoutes(api, container), {
     prefix: '/api/system',

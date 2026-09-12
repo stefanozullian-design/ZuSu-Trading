@@ -279,3 +279,93 @@ export interface ScanRunResult {
   matches: { symbol: string; asOf: string; values: Record<string, string> }[];
   notEvaluable: { symbol: string; reason: string; missingField: string | null }[];
 }
+
+export type RuleNode =
+  | { type: 'all'; children: RuleNode[] }
+  | { type: 'any'; children: RuleNode[] }
+  | { type: 'not'; child: RuleNode }
+  | ({ type: 'condition' } & ScanCondition);
+
+export interface StrategyStopSetting {
+  kind: 'PERCENT' | 'ATR';
+  value: string;
+}
+
+export interface StrategyTargetSetting {
+  kind: 'PERCENT' | 'ATR' | 'RISK_MULTIPLE';
+  value: string;
+}
+
+export interface StrategyDefinition {
+  timeframe: string;
+  watchlistId: string | null;
+  entry: { direction: 'LONG' | 'SHORT'; when: RuleNode };
+  exit: { when: RuleNode } | null;
+  stop: StrategyStopSetting | null;
+  target: StrategyTargetSetting | null;
+}
+
+export interface StrategyRiskSettings {
+  maxConcurrentPositions: number;
+  maxNotionalPerTrade: string;
+  minBars: number;
+}
+
+export interface StrategyVersion {
+  id: string;
+  strategyId: string;
+  version: number;
+  stage: string;
+  changeDescription: string;
+  /** Null when the API cannot read this version's rule language. */
+  definition: StrategyDefinition | null;
+  riskSettings: StrategyRiskSettings | null;
+  executionMode: string;
+  sessionScope: string;
+  entrySummary: string | null;
+  exitSummary: string | null;
+  fieldsUsed: string[];
+  frozen: boolean;
+  authorId: string | null;
+  approvedById: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+export interface Strategy {
+  id: string;
+  name: string;
+  description: string | null;
+  isArchived: boolean;
+  versions: StrategyVersion[];
+  liveVersion: StrategyVersion | null;
+  latestVersion: StrategyVersion | null;
+}
+
+export interface StrategyEvaluation {
+  strategyId: string;
+  strategyVersionId: string;
+  version: number;
+  timeframe: string;
+  correlationId: string;
+  evaluatedAt: string;
+  created: { id: string; signalKey: string; symbol: string; direction: string }[];
+  duplicates: string[];
+  rejected: string[];
+  notEvaluable: { symbol: string; reason: string }[];
+}
+
+export interface SignalRow {
+  id: string;
+  signalKey: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  referencePrice: string;
+  suggestedStop: string | null;
+  suggestedTarget: string | null;
+  strategyName: string | null;
+  strategyVersion: number | null;
+  conditionSnapshot: Record<string, unknown>;
+  createdAt: string;
+}

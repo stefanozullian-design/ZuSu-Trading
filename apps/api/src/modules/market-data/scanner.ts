@@ -1,13 +1,18 @@
-import { Decimal, dec } from '@zusu/shared';
 import type { IndicatorSeries } from './indicator.service.js';
+import {
+  describeCondition,
+  evaluateCondition,
+  type ScanCondition,
+  type ScanField,
+} from './condition.js';
 
 /**
- * The scanner's filter evaluator (§9).
+ * The scanner (§9).
  *
- * A scan is a flat list of conditions, all of which must hold. Deliberately
- * flat rather than a nested boolean tree: a rule tree with AND/OR/NOT is the
- * strategy engine's job in Phase 3, and building a second, subtly different
- * expression language here would guarantee the two disagree.
+ * A flat list of conditions, all of which must hold at the newest stored bar.
+ * Flat on purpose: the nested AND/OR/NOT tree belongs to the strategy engine,
+ * and the two share their leaves (`condition.ts`) rather than each defining
+ * their own comparison rules.
  *
  * Three rules, all of which the tests check:
  *
@@ -21,59 +26,23 @@ import type { IndicatorSeries } from './indicator.service.js';
  *      cannot be checked; one that says "AAPL, rsi14 28.4, close 184.2" can.
  *
  *   3. **Only closed bars are considered.** The scan evaluates the last bar in
- *      the series and never looks past it, which is the same causality rule the
- *      indicator engine holds to.
+ *      the series and never looks past it.
  */
 
-export const SCAN_FIELDS = [
-  'close',
-  'volume',
-  'sma20',
-  'sma50',
-  'ema12',
-  'ema26',
-  'rsi14',
-  'macd',
-  'macdSignal',
-  'macdHistogram',
-  'bollingerUpper',
-  'bollingerMiddle',
-  'bollingerLower',
-  'atr14',
-  'vwap',
-  'stochasticK',
-  'stochasticD',
-] as const;
-export type ScanField = (typeof SCAN_FIELDS)[number];
-
-export const SCAN_OPERATORS = [
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'between',
-  'crosses_above',
-  'crosses_below',
-] as const;
-export type ScanOperator = (typeof SCAN_OPERATORS)[number];
-
-/**
- * The right-hand side of a condition: a constant, or another field.
- *
- * Field-to-field comparison is what makes the scanner worth having —
- * "close above its 20-period average" is a far more useful question than
- * "close above 184".
- */
-export type ScanOperand = { constant: string } | { field: ScanField };
-
-export interface ScanCondition {
-  field: ScanField;
-  operator: ScanOperator;
-  /** Right-hand side. `between` uses this as the lower bound. */
-  operand: ScanOperand;
-  /** Upper bound, `between` only. */
-  operandUpper?: ScanOperand;
-}
+export {
+  SCAN_FIELDS,
+  SCAN_OPERATORS,
+  describeCondition,
+  describeOperand,
+  evaluateCondition,
+} from './condition.js';
+export type {
+  ConditionVerdict,
+  ScanCondition,
+  ScanField,
+  ScanOperand,
+  ScanOperator,
+} from './condition.js';
 
 export interface ScanFilter {
   timeframe: string;
@@ -105,8 +74,8 @@ export interface ScanOutcome {
 /**
  * Evaluates one symbol's series against a filter.
  *
- * Returns a match, or a skip explaining why no verdict was possible, or null
- * for a clean non-match.
+ * Returns a match, or a skip explaining why no verdict was possible, or
+ * neither for a clean non-match.
  */
 export function evaluateSymbol(
   symbol: string,
@@ -121,120 +90,28 @@ export function evaluateSymbol(
     };
   }
 
-  const needsPrevious = conditions.some(
-    (c) => c.operator === 'crosses_above' || c.operator === 'crosses_below',
-  );
-  if (needsPrevious && last < 1) {
-    return {
-      match: null,
-      skip: {
-        symbol,
-        reason: 'a crossing needs two bars, and only one is stored',
-        missingField: null,
-      },
-    };
-  }
-
   const values: Record<string, string> = {};
-  const read = (field: ScanField, index: number): Decimal | null => {
-    const value = series[field][index] ?? null;
-    return value;
-  };
-
   for (const condition of conditions) {
-    const current = read(condition.field, last);
-    if (current === null) {
-      // Warm-up, or a gap. Not a non-match: an unanswerable question.
+    const verdict = evaluateCondition(condition, series, last);
+    Object.assign(values, verdict.values);
+
+    if (verdict.satisfied === null) {
+      // Not a non-match: an unanswerable question. Reported rather than
+      // dropped, so "nothing matched" stays distinguishable from "no data".
       return {
         match: null,
         skip: {
           symbol,
-          reason: `${condition.field} has no value at the latest bar (warm-up or missing data)`,
-          missingField: condition.field,
+          reason: verdict.unknownReason ?? 'the condition could not be judged',
+          missingField: verdict.missingField,
         },
       };
     }
-    values[condition.field] = current.toString();
-
-    const bound = resolveOperand(condition.operand, series, last);
-    if (bound === null) {
-      return {
-        match: null,
-        skip: {
-          symbol,
-          reason: `${describeOperand(condition.operand)} has no value at the latest bar`,
-          missingField: 'field' in condition.operand ? condition.operand.field : null,
-        },
-      };
-    }
-    if ('field' in condition.operand) values[condition.operand.field] = bound.toString();
-
-    if (condition.operator === 'between') {
-      if (!condition.operandUpper) {
-        return {
-          match: null,
-          skip: { symbol, reason: 'between requires an upper bound', missingField: null },
-        };
-      }
-      const upper = resolveOperand(condition.operandUpper, series, last);
-      if (upper === null) {
-        return {
-          match: null,
-          skip: {
-            symbol,
-            reason: `${describeOperand(condition.operandUpper)} has no value at the latest bar`,
-            missingField: 'field' in condition.operandUpper ? condition.operandUpper.field : null,
-          },
-        };
-      }
-      if ('field' in condition.operandUpper) {
-        values[condition.operandUpper.field] = upper.toString();
-      }
-      if (current.lt(bound) || current.gt(upper)) return { match: null, skip: null };
-      continue;
-    }
-
-    if (condition.operator === 'crosses_above' || condition.operator === 'crosses_below') {
-      const previous = read(condition.field, last - 1);
-      const previousBound = resolveOperand(condition.operand, series, last - 1);
-      if (previous === null || previousBound === null) {
-        return {
-          match: null,
-          skip: {
-            symbol,
-            reason: `a crossing needs the previous bar, and ${condition.field} has no value there`,
-            missingField: condition.field,
-          },
-        };
-      }
-      // A crossing is a change of side between two adjacent bars, not merely
-      // being on one side of the line now.
-      const crossed =
-        condition.operator === 'crosses_above'
-          ? previous.lte(previousBound) && current.gt(bound)
-          : previous.gte(previousBound) && current.lt(bound);
-      if (!crossed) return { match: null, skip: null };
-      continue;
-    }
-
-    const satisfied =
-      condition.operator === 'gt'
-        ? current.gt(bound)
-        : condition.operator === 'gte'
-          ? current.gte(bound)
-          : condition.operator === 'lt'
-            ? current.lt(bound)
-            : current.lte(bound);
-    if (!satisfied) return { match: null, skip: null };
+    if (!verdict.satisfied) return { match: null, skip: null };
   }
 
-  const asOf = series.openTime[last];
   return {
-    match: {
-      symbol,
-      asOf: asOf ?? new Date(0),
-      values,
-    },
+    match: { symbol, asOf: series.openTime[last] ?? new Date(0), values },
     skip: null,
   };
 }
@@ -262,40 +139,6 @@ export function runScan(
   return { matches, notEvaluable, evaluated };
 }
 
-function resolveOperand(
-  operand: ScanOperand,
-  series: IndicatorSeries,
-  index: number,
-): Decimal | null {
-  if ('constant' in operand) {
-    try {
-      const value = dec(operand.constant);
-      return value.isFinite() ? value : null;
-    } catch {
-      return null;
-    }
-  }
-  return series[operand.field][index] ?? null;
-}
-
-function describeOperand(operand: ScanOperand): string {
-  return 'constant' in operand ? operand.constant : operand.field;
-}
-
-/** A short human-readable rendering of a condition, for the UI and audit. */
-export function describeCondition(condition: ScanCondition): string {
-  const operators: Record<ScanOperator, string> = {
-    gt: 'above',
-    gte: 'at or above',
-    lt: 'below',
-    lte: 'at or below',
-    between: 'between',
-    crosses_above: 'crosses above',
-    crosses_below: 'crosses below',
-  };
-  const right = describeOperand(condition.operand);
-  if (condition.operator === 'between' && condition.operandUpper) {
-    return `${condition.field} between ${right} and ${describeOperand(condition.operandUpper)}`;
-  }
-  return `${condition.field} ${operators[condition.operator]} ${right}`;
-}
+/** Re-exported for callers that only need the rendering. */
+export const describeFilter = (conditions: ScanCondition[]): string[] =>
+  conditions.map(describeCondition);
