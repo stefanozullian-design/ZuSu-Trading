@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuditAction, UserRole } from '@zusu/shared';
-import { buildTestApp, login, type Session, type TestApp } from '../helpers/app.js';
+import { buildTestApp, login, loginAdmin, type Session, type TestApp } from '../helpers/app.js';
 import { disconnectTestDb, resetDatabase, testDb } from '../helpers/db.js';
 import { createPortfolio, createUser, grantPortfolioAccess } from '../helpers/fixtures.js';
 
@@ -506,7 +506,7 @@ describe('who a portfolio belongs to', () => {
     expect((entry.afterValue as { clientId: string }).clientId).toBe(mum);
   });
 
-  it('does not let a manager register a new owner', async () => {
+  it('lets a manager register a new owner', async () => {
     const response = await harness.app.inject({
       method: 'POST',
       url: '/api/clients',
@@ -514,11 +514,12 @@ describe('who a portfolio belongs to', () => {
       payload: { name: 'Somebody new' },
     });
 
-    // Saying whose money is under management is an administrative act, and a
-    // manager who could invent an owner could quietly move a book to one.
-    // Assigning a portfolio to an owner that exists is a manager's job; this
-    // is not.
-    expect(response.statusCode).toBe(403);
+    // This was administrator-only, on the reasoning that somebody able to
+    // invent an owner could quietly move a book to one. The separation is real
+    // in a firm and absent in the installation this is used in, where the same
+    // person does both — and moving a portfolio between owners was always a
+    // manager's action anyway, so the permission never gated that.
+    expect(response.statusCode).toBe(201);
   });
 
   it('keeps the owner visible after an unrelated edit', async () => {
@@ -595,5 +596,192 @@ describe('what a portfolio is for', () => {
     });
 
     expect(response.json().objective).toBeNull();
+  });
+});
+
+/**
+ * Managing the owners themselves.
+ *
+ * An owner can be renamed, given a contact, and retired — but never deleted.
+ * Every one of them is referenced by append-only audit rows from the moment
+ * they exist, so removing one would mean rewriting a trading record, which the
+ * database refuses and rightly.
+ */
+describe('editing an owner', () => {
+  let admin: Session;
+
+  beforeEach(async () => {
+    await createUser(db, { email: 'owner-admin@test.local', role: UserRole.ADMIN });
+    // The whole enrol-then-verify flow: an administrator cannot get a session
+    // without a second factor, which is exactly the friction being tested for
+    // everywhere else this permission is required.
+    admin = await loginAdmin(harness.app, 'owner-admin@test.local');
+  });
+
+  async function owner(name: string): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      headers: admin.headers(),
+      payload: { name },
+    });
+    expect(response.statusCode).toBe(201);
+    return response.json().id as string;
+  }
+
+  it('renames one, and records both sides', async () => {
+    const id = await owner('Mum');
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { name: 'Mother' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().name).toBe('Mother');
+
+    const entry = await db.auditLog.findFirstOrThrow({
+      where: { entityId: id, action: AuditAction.CLIENT_MODIFIED },
+      orderBy: { seq: 'desc' },
+    });
+    expect((entry.beforeValue as { name: string }).name).toBe('Mum');
+    expect((entry.afterValue as { name: string }).name).toBe('Mother');
+  });
+
+  it('clears a contact rather than only ever setting one', async () => {
+    const id = await owner('Typo Person');
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { contactEmail: 'wrong@example.com' },
+    });
+
+    const cleared = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { contactEmail: null },
+    });
+
+    // A field that can only be set and never cleared makes a typo permanent.
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().contactEmail).toBeNull();
+  });
+
+  it('retires one, taking them out of the list without deleting them', async () => {
+    const id = await owner('Retired Person');
+
+    const retired = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { isActive: false },
+    });
+    expect(retired.statusCode).toBe(200);
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/clients',
+      headers: admin.headers(),
+    });
+    expect((listed.json() as { id: string }[]).map((c) => c.id)).not.toContain(id);
+
+    // Still there, and findable, because the audit rows that name them cannot
+    // be rewritten.
+    const all = await harness.app.inject({
+      method: 'GET',
+      url: '/api/clients?includeInactive=true',
+      headers: admin.headers(),
+    });
+    expect((all.json() as { id: string }[]).map((c) => c.id)).toContain(id);
+    expect(await db.client.findUnique({ where: { id } })).not.toBeNull();
+  });
+
+  it('refuses to retire somebody whose money is still being traded', async () => {
+    const id = await owner('Still Trading');
+    await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: {
+        name: 'Open book',
+        environment: 'DEMO',
+        initialCapital: '1000',
+        clientId: id,
+      },
+    });
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { isActive: false },
+    });
+
+    // Retiring them would take them out of every picker while their book is
+    // still open — hiding the book rather than the person.
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.message).toMatch(/still owns/i);
+  });
+
+  it('brings a retired owner back', async () => {
+    const id = await owner('Returning');
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { isActive: false },
+    });
+
+    const back = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+      payload: { isActive: true },
+    });
+
+    expect(back.statusCode).toBe(200);
+    expect(back.json().isActive).toBe(true);
+  });
+
+  it('offers no way to delete one at all', async () => {
+    const id = await owner('Permanent');
+
+    const response = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/clients/${id}`,
+      headers: admin.headers(),
+    });
+
+    // Not 403 — the route does not exist. Deleting an owner would leave audit
+    // rows pointing at nothing, or require rewriting them.
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('lets a manager edit one, and still refuses a viewer', async () => {
+    const id = await owner('Editable');
+
+    const byManager = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: session.headers(),
+      payload: { name: 'Renamed by a manager' },
+    });
+    expect(byManager.statusCode).toBe(200);
+
+    await createUser(db, { email: 'owner-viewer@test.local', role: UserRole.VIEWER });
+    const viewer = await login(harness.app, 'owner-viewer@test.local');
+    const byViewer = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/clients/${id}`,
+      headers: viewer.headers(),
+      payload: { name: 'Renamed by a viewer' },
+    });
+
+    // Widening one permission must not widen the ones either side of it.
+    expect(byViewer.statusCode).toBe(403);
   });
 });

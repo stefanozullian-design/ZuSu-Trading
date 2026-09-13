@@ -200,13 +200,98 @@ test.describe('the dashboard', () => {
     await expect(row('Trades per day')).toContainText('2');
   });
 
-  test('a manager may assign an owner but not invent one', async ({ page }) => {
-    await page.getByRole('button', { name: /new portfolio/i }).click();
+  test('a manager may register an owner and edit one', async ({ page }) => {
+    await page.getByRole('button', { name: /manage owners/i }).click();
 
-    // Saying whose money is under management is an administrative act: someone
-    // who could invent an owner could quietly move a book to one.
-    await expect(page.getByLabel('Owner', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^New$/ })).toHaveCount(0);
+    await page.getByRole('button', { name: /add an owner/i }).click();
+    await page.getByLabel('New owner name').fill('E2E Aunt');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/clients') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /^Add$/ }).click(),
+    ]);
+    await expect(page.getByRole('cell', { name: 'E2E Aunt', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: /edit E2E Aunt/i }).click();
+    await page.getByLabel('Owner name').fill('E2E Great Aunt');
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'PATCH'),
+      page.getByRole('button', { name: /^Save$/ }).click(),
+    ]);
+    await expect(page.getByRole('cell', { name: 'E2E Great Aunt', exact: true })).toBeVisible();
+
+    // And she is immediately available to assign a portfolio to.
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await expect(page.getByLabel('Owner', { exact: true })).toContainText('E2E Great Aunt');
+  });
+
+  test('retires an owner instead of deleting them', async ({ page }) => {
+    await page.getByRole('button', { name: /manage owners/i }).click();
+
+    await page.getByRole('button', { name: /add an owner/i }).click();
+    await page.getByLabel('New owner name').fill('E2E Retiree');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/clients') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /^Add$/ }).click(),
+    ]);
+
+    const row = page.getByRole('row', { name: /E2E Retiree/ });
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'PATCH'),
+      row.getByRole('button', { name: /^Retire$/ }).click(),
+    ]);
+
+    // Gone from the pickers, still on this screen, and bring-back-able. An
+    // owner is named by append-only audit rows from the moment they exist, so
+    // there is no delete to offer.
+    await expect(page.getByText(/no delete, and that is deliberate/i)).toBeVisible();
+    await expect(page.getByRole('row', { name: /E2E Retiree/ })).toContainText(/retired/i);
+    await expect(page.getByRole('button', { name: /bring back/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /hide owners/i }).click();
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await expect(page.getByLabel('Owner', { exact: true })).not.toContainText('E2E Retiree');
+  });
+
+  test('refuses to retire somebody whose money is still being traded', async ({ page }) => {
+    await page.getByRole('button', { name: /manage owners/i }).click();
+    await page.getByRole('button', { name: /add an owner/i }).click();
+    await page.getByLabel('New owner name').fill('E2E Busy');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/clients') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /^Add$/ }).click(),
+    ]);
+    await page.getByRole('button', { name: /hide owners/i }).click();
+
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Busy Book');
+    await page.getByLabel('Starting cash').fill('1000');
+    const ownerSelect = page.getByLabel('Owner', { exact: true });
+    const label = (await ownerSelect.locator('option').allInnerTexts()).find((t) =>
+      /E2E Busy/.test(t),
+    );
+    await ownerSelect.selectOption({ label: label! });
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /manage owners/i }).click();
+    await page
+      .getByRole('row', { name: /E2E Busy/ })
+      .getByRole('button', { name: /^Retire$/ })
+      .click();
+
+    // Retiring them would take them out of every picker while their book is
+    // still open, hiding the book rather than the person.
+    await expect(page.getByText(/still owns/i)).toBeVisible();
   });
 
   test('shows several portfolios together, and adds them up', async ({ page }) => {

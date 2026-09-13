@@ -126,6 +126,24 @@ export const createClientSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
+/**
+ * Editing an owner.
+ *
+ * `externalRef` and `contactEmail` are nullable rather than merely optional:
+ * a reference typed by mistake has to be removable, and a field that can only
+ * be set and never cleared makes every slip permanent.
+ */
+export const updateClientSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120),
+    externalRef: z.string().trim().max(64).nullable(),
+    contactEmail: z.string().trim().toLowerCase().email().nullable(),
+    notes: z.string().max(2000).nullable(),
+    isActive: z.boolean(),
+  })
+  .partial();
+export type UpdateClientInput = z.infer<typeof updateClientSchema>;
+
 export const riskLimitsSchema = z.object({
   maxDailyLoss: decimalString,
   maxWeeklyLoss: decimalString,

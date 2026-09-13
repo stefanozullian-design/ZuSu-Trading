@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuditAction, UserRole } from '@zusu/shared';
-import { buildTestApp, login, type Session, type TestApp } from '../helpers/app.js';
+import { buildTestApp, login, loginAdmin, type Session, type TestApp } from '../helpers/app.js';
 import { disconnectTestDb, resetDatabase, testDb } from '../helpers/db.js';
 import {
   createClient,
@@ -73,37 +73,13 @@ beforeEach(async () => {
   };
   managerSession = await login(harness.app, 'manager@test.local');
   viewerSession = await login(harness.app, 'viewer@test.local');
-  adminSession = await loginAdmin();
+  adminSession = await loginAdmin(harness.app, 'admin@test.local');
 });
 
 afterAll(async () => {
   await harness?.close();
   await disconnectTestDb();
 });
-
-/** Signs an administrator in through the full enrol-then-verify flow. */
-async function loginAdmin(): Promise<Session> {
-  const challenge = await harness.app.inject({
-    method: 'POST',
-    url: '/api/auth/login',
-    payload: { email: 'admin@test.local', password: 'TestPassword123!' },
-  });
-  const { mfaToken } = challenge.json();
-  const enrol = await harness.app.inject({
-    method: 'POST',
-    url: '/api/auth/mfa/enrol',
-    payload: { mfaToken },
-  });
-  const { secret } = enrol.json();
-  const { currentTotp } = await import('../../src/modules/auth/mfa.js');
-  const verify = await harness.app.inject({
-    method: 'POST',
-    url: '/api/auth/mfa/verify',
-    payload: { mfaToken, totp: currentTotp(secret) },
-  });
-  const { sessionFromResponse } = await import('../helpers/app.js');
-  return sessionFromResponse(verify.cookies, verify.json().csrfToken);
-}
 
 describe('portfolio isolation', () => {
   it('shows a client only their own portfolio', async () => {

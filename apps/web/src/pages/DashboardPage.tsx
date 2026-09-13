@@ -9,6 +9,7 @@ import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { usePortfolios } from '@/hooks/usePortfolios';
 import { useViewedPortfolios } from '@/hooks/useViewedPortfolios';
 import { CombinedView } from '@/components/CombinedView';
+import { OwnersPanel } from '@/components/OwnersPanel';
 import { UNASSIGNED, useOwnerFilter } from '@/hooks/useOwnerFilter';
 import { OBJECTIVE_TITLES, ObjectivePicker, OwnerFilter, OwnerPicker } from '@/components/Owners';
 import { KillSwitch } from '@/components/KillSwitch';
@@ -21,7 +22,12 @@ import { cn } from '@/lib/utils';
 import type { AutomationConfig, PortfolioObjective, PortfolioSummary } from '@/lib/types';
 
 export function DashboardPage() {
+  const { can } = useAuth();
   const [showClosed, setShowClosed] = useState(false);
+  const [managingOwners, setManagingOwners] = useState(false);
+  // A viewer cannot read the owner roster at all, so the way in is not shown
+  // rather than shown and then refused.
+  const canSeeOwners = can('client:read');
   const { ownerId, setOwnerId } = useOwnerFilter();
 
   const { portfolios, isLoading, error } = usePortfolios({ includeClosed: showClosed });
@@ -72,7 +78,21 @@ export function DashboardPage() {
   if (!portfolios?.length) {
     return (
       <div className="mx-auto w-full max-w-2xl space-y-3 p-6">
-        <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+        <div className="flex flex-wrap items-center gap-3">
+          <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+          {canSeeOwners && (
+            <button
+              type="button"
+              className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => setManagingOwners(!managingOwners)}
+            >
+              {managingOwners ? 'Hide owners' : 'Manage owners'}
+            </button>
+          )}
+        </div>
+
+        {managingOwners && <OwnersPanel onClose={() => setManagingOwners(false)} />}
+
         <Card>
           <CardHeader>
             <CardTitle>{ownerId ? 'Nothing for this owner' : 'No portfolios yet'}</CardTitle>
@@ -99,7 +119,20 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6">
-      <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+      <div className="flex flex-wrap items-center gap-3">
+        <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+        {canSeeOwners && (
+          <button
+            type="button"
+            className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => setManagingOwners(!managingOwners)}
+          >
+            {managingOwners ? 'Hide owners' : 'Manage owners'}
+          </button>
+        )}
+      </div>
+
+      {managingOwners && <OwnersPanel onClose={() => setManagingOwners(false)} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-2 overflow-x-auto pb-1">

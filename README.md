@@ -200,9 +200,21 @@ can change any of it afterwards. A portfolio with no stated objective keeps the
 widest profile rather than being retroactively tightened, and the screen shows
 `— not stated` rather than inventing one.
 
-Assigning a portfolio to an owner is a manager's job; registering a new owner
-needs `client:write`, which is administrator-only. Someone who could invent an
-owner could quietly move a book to one.
+**Manage owners** on the dashboard registers them, renames them, records a
+contact and retires them. There is no delete: an owner is named by append-only
+audit rows from the moment they exist, so removing one would mean rewriting a
+trading record. Retiring takes them out of every picker and keeps the history,
+which is what deleting is usually meant to achieve. Retiring somebody who still
+owns open portfolios is refused — it would hide the book rather than the
+person.
+
+`client:write` is a manager permission. It was administrator-only, on the
+reasoning that somebody able to invent an owner could quietly move a book to
+one; that separation is real in a firm and absent in a one-person install,
+where the only effect was that adding a relative required a second login with
+an authenticator app. Moving a portfolio between owners was always a manager's
+action, so the permission never gated that anyway. Every create and edit is
+audited with both sides.
 
 Choosing an owner scopes **every** page, not just the dashboard — a Trading
 selector offering your own book while you are thinking about a relative's is a

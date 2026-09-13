@@ -69,6 +69,24 @@ const MANAGER_PERMISSIONS: Permission[] = [
   ...CLIENT_PERMISSIONS,
   Permission.WATCHLIST_WRITE,
   Permission.CLIENT_READ,
+  /**
+   * Registering and editing the people whose money is under management.
+   *
+   * Withheld from managers until now, on the reasoning that someone able to
+   * invent an owner could quietly move a book to one. That separation is real
+   * in a firm, where the person who trades and the person who decides whose
+   * money is here are different people. It is not real in the installation
+   * this platform is actually used in, where both are the same person and the
+   * only effect was that adding a relative required a second login with an
+   * authenticator app.
+   *
+   * What the boundary was protecting is not lost: every create and every edit
+   * is audited with both sides, owners are retired rather than deleted, and
+   * moving a portfolio between owners was always a manager's action anyway —
+   * so a manager who wanted to misfile a book never needed this permission to
+   * do it.
+   */
+  Permission.CLIENT_WRITE,
   Permission.PORTFOLIO_WRITE,
   Permission.BROKER_ACCOUNT_READ,
   Permission.STRATEGY_WRITE,

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Permission, createClientSchema } from '@zusu/shared';
+import { Permission, createClientSchema, updateClientSchema } from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
 import { principalOf } from '../../plugins/auth.js';
 
@@ -28,10 +28,24 @@ export async function registerClientRoutes(
       schema: {
         tags: ['clients'],
         summary: 'List clients',
+        description:
+          'Retired owners are left out unless asked for. They are never deleted — an owner is ' +
+          'referenced by append-only audit rows from the moment they exist.',
+        querystring: z.object({
+          includeInactive: z
+            .enum(['true', 'false'])
+            .default('false')
+            .transform((v) => v === 'true'),
+        }),
         response: { 200: z.array(clientSchema) },
       },
     },
-    async (request, reply) => reply.send(await container.clients.list(principalOf(request))),
+    async (request, reply) =>
+      reply.send(
+        await container.clients.list(principalOf(request), {
+          includeInactive: request.query.includeInactive,
+        }),
+      ),
   );
 
   typed.post(
@@ -49,5 +63,26 @@ export async function registerClientRoutes(
       const client = await container.clients.create(principalOf(request), request.body);
       return reply.status(201).send(client);
     },
+  );
+
+  typed.patch(
+    '/:id',
+    {
+      preHandler: app.requirePermission(Permission.CLIENT_WRITE),
+      schema: {
+        tags: ['clients'],
+        summary: 'Rename an owner, change their contact details, or retire them',
+        description:
+          'There is no delete. Retiring takes an owner out of every picker and keeps their ' +
+          'history, which is what "delete" is usually meant to achieve.',
+        params: z.object({ id: z.string().uuid() }),
+        body: updateClientSchema,
+        response: { 200: clientSchema },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await container.clients.update(principalOf(request), request.params.id, request.body),
+      ),
   );
 }
