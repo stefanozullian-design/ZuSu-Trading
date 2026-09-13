@@ -6,6 +6,7 @@ import {
   Permission,
   TradingEnvironment,
   TradingState,
+  UserRole,
   dec,
   percentChange,
   toMoneyString,
@@ -156,6 +157,18 @@ export class PortfolioService {
       if (input.clientId) {
         await tx.clientPortfolio.create({
           data: { clientId: input.clientId, portfolioId: created.id, isPrimary: true },
+        });
+      }
+
+      // Whoever made it can see it and trade it.
+      //
+      // Without this, a manager could create a portfolio and then not find it:
+      // an administrator sees everything, but everyone else is scoped to
+      // explicit grants and their own client's books, and a brand-new
+      // portfolio has neither. The API said 201 and the thing vanished.
+      if (principal.role !== UserRole.ADMIN) {
+        await tx.portfolioAccess.create({
+          data: { userId: principal.id, portfolioId: created.id, canTrade: true },
         });
       }
 

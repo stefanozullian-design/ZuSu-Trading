@@ -59,6 +59,24 @@ test.describe('the dashboard', () => {
     await expect(page.getByText(/no ANTHROPIC_API_KEY/i)).toBeVisible();
   });
 
+  test('can make a portfolio without leaving the page', async ({ page }) => {
+    // There was no screen for this at all — the only route to a portfolio of
+    // your own was a hand-written API request, so a fresh install's first
+    // experience was a dead end.
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Second Book');
+    await page.getByLabel('Starting cash').fill('25000');
+
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().endsWith('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await expect(page.getByRole('button', { name: /E2E Second Book/ })).toBeVisible();
+  });
+
   test('states plainly whether anything trades on its own', async ({ page }) => {
     // The one number on the dashboard worth being unambiguous about, and it is
     // read from the live configurations rather than asserted in prose.

@@ -1,6 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, explainApiError } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useAuth } from '@/hooks/useAuth';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -37,22 +41,23 @@ export function DashboardPage() {
   }
   if (!portfolios?.length) {
     return (
-      <div className="p-6">
+      <div className="mx-auto w-full max-w-2xl space-y-3 p-6">
         <Card>
           <CardHeader>
-            <CardTitle>No portfolios</CardTitle>
+            <CardTitle>No portfolios yet</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            No portfolio has been shared with this account yet.
+            Nothing has been shared with this account. Make one below and it becomes yours.
           </CardContent>
         </Card>
+        <NewPortfolio />
       </div>
     );
   }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6">
-      {portfolios.length > 1 && (
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {portfolios.map((portfolio) => (
             <button
@@ -71,7 +76,9 @@ export function DashboardPage() {
             </button>
           ))}
         </div>
-      )}
+      </div>
+
+      <NewPortfolio />
 
       {selected && (
         <>
@@ -251,6 +258,120 @@ function AutomationPanel() {
           typed confirmation and eight conditions that all pass — re-checked before every automatic
           order. Lowering it is one button and is never refused.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Making a portfolio.
+ *
+ * There was no screen for this at all: the capability existed in the API and
+ * the only way to reach it was a hand-written request, which meant a fresh
+ * install's first experience was a dead end. The environment is the one field
+ * worth pausing over, and it is fixed for the portfolio's life — so it is
+ * stated here rather than buried in a tooltip.
+ */
+function NewPortfolio() {
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [capital, setCapital] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const create = useMutation({
+    mutationFn: () =>
+      api<PortfolioSummary>('/api/portfolios', {
+        method: 'POST',
+        body: { name, environment: 'DEMO', initialCapital: capital, baseCurrency: 'USD' },
+      }),
+    onSuccess: async () => {
+      setError(null);
+      setName('');
+      setCapital('');
+      setOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
+  if (!can('portfolio:write')) return null;
+
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" className="w-fit" onClick={() => setOpen(true)}>
+        <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
+        New portfolio
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>New portfolio</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block space-y-1">
+            <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+              Name
+            </span>
+            <Input
+              id="new-portfolio-name"
+              className="h-8 text-xs"
+              aria-label="Portfolio name"
+              placeholder="My portfolio"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+              Starting cash
+            </span>
+            <Input
+              id="new-portfolio-capital"
+              className="h-8 text-xs tabular-nums"
+              aria-label="Starting cash"
+              inputMode="decimal"
+              placeholder="25000"
+              value={capital}
+              onChange={(e) => setCapital(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          It will be a <strong>DEMO</strong> portfolio: simulated prices, a simulated venue, nothing
+          that can reach a real market. A portfolio is bound to its environment for life, so this
+          cannot be switched later — which is what stops demo credentials ever reaching real money.
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          Starting cash also sets the opening risk limits: 2% of it as the daily loss limit, 10% as
+          the largest single position.
+        </p>
+
+        {error && (
+          <p className="rounded-md border border-red-500/30 bg-red-500/5 p-2 text-[11px] text-red-400">
+            {error}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1"
+            disabled={name.trim().length < 2 || !(Number(capital) > 0) || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? 'Creating…' : 'Create it'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

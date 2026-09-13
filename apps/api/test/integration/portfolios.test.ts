@@ -44,6 +44,43 @@ describe('creating a portfolio', () => {
     expect(Number(limits.maxPositionSize)).toBeCloseTo(5000, 6);
   });
 
+  it('is visible to the person who made it', async () => {
+    // A manager is scoped to explicit grants and their own client's books, and
+    // a brand-new portfolio has neither — so without a grant the API returned
+    // 201 and the thing vanished from every list.
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Mine To See', environment: 'DEMO', initialCapital: '10000' },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/portfolios',
+      headers: { cookie: session.cookies },
+    });
+    const names = (listed.json() as { name: string }[]).map((p) => p.name);
+    expect(names).toContain('Mine To See');
+  });
+
+  it('lets the person who made it trade it', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Mine To Trade', environment: 'DEMO', initialCapital: '10000' },
+    });
+    const { id } = created.json() as { id: string };
+
+    // Seeing a book and moving it are different rights, and creating one
+    // should confer both — otherwise the next step after "create" is a
+    // permission error nobody can resolve from the screen they are on.
+    const grant = await db.portfolioAccess.findFirstOrThrow({ where: { portfolioId: id } });
+    expect(grant.canTrade).toBe(true);
+  });
+
   it('records the creation in the audit log', async () => {
     const response = await harness.app.inject({
       method: 'POST',
