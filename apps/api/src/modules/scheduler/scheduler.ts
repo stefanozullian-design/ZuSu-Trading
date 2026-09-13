@@ -333,8 +333,13 @@ export class Scheduler {
       return 'no market-data provider is configured; nothing was fetched or invented';
     }
 
-    const run = await this.container.marketDataSync.sync({ days: 5 });
-    return run.summary;
+    // Both timeframes. Daily bars feed the charts, indicators and backtests;
+    // five-minute bars are what the paper venue quotes from, and nothing else
+    // in this platform ever fetched them — so a paper portfolio holding
+    // anything but the eight demo symbols stayed unmarked for ever.
+    const daily = await this.container.marketDataSync.sync({ days: 5 });
+    const intraday = await this.container.marketDataSync.sync({ timeframe: '5m', days: 5 });
+    return `daily: ${daily.summary}; 5m: ${intraday.summary}`;
   }
 
   private async runBreakers(): Promise<string> {

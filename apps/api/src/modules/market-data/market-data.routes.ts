@@ -39,6 +39,8 @@ const instrumentDto = z.object({
   sector: z.string().nullable(),
   isTradable: z.boolean(),
   candleCount: z.number().int(),
+  /** Whether a paper portfolio can price it: five-minute bars exist. */
+  markable: z.boolean(),
 });
 
 export async function registerMarketDataRoutes(

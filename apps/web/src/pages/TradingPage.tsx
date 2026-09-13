@@ -672,6 +672,7 @@ function ImportPosition({ portfolioId, canWrite }: { portfolioId: string; canWri
   const [price, setPrice] = useState('');
   const [acquired, setAcquired] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [unknown, setUnknown] = useState<string | null>(null);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -686,6 +687,7 @@ function ImportPosition({ portfolioId, canWrite }: { portfolioId: string; canWri
       }),
     onSuccess: async () => {
       setError(null);
+      setUnknown(null);
       setSymbol('');
       setQuantity('');
       setPrice('');
@@ -693,7 +695,17 @@ function ImportPosition({ portfolioId, canWrite }: { portfolioId: string; canWri
       await queryClient.invalidateQueries({ queryKey: ['positions'] });
       await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
     },
-    onError: (err: Error) => setError(explainApiError(err)),
+    onError: (err: Error) => {
+      const message = explainApiError(err);
+      setError(message);
+      // Remembered separately from the error so the offer, and its answer,
+      // survive the error being cleared.
+      setUnknown(
+        /is not an instrument this platform knows/i.test(message)
+          ? symbol.trim().toUpperCase()
+          : null,
+      );
+    },
   });
 
   if (!canWrite) return null;
@@ -784,18 +796,29 @@ function ImportPosition({ portfolioId, canWrite }: { portfolioId: string; canWri
             </p>
 
             {error && (
-              <div className="space-y-2 rounded-md border border-red-500/30 bg-red-500/5 p-2">
-                <p className="text-[11px] text-red-400">{error}</p>
-                {/*
-                  Offered where the wall is hit. The moment somebody is told a
-                  ticker is unknown is the moment they want to fix it, and
-                  sending them to a settings page to do it is how a two-click
-                  task becomes an abandoned one.
-                */}
-                {/is not an instrument this platform knows/i.test(error) && (
-                  <AddInstrument symbol={symbol} onAdded={() => setError(null)} />
-                )}
-              </div>
+              <p className="rounded-md border border-red-500/30 bg-red-500/5 p-2 text-[11px] text-red-400">
+                {error}
+              </p>
+            )}
+
+            {/*
+              Kept in its own state rather than read from the error, which is
+              what made the confirmation invisible: clearing the error on
+              success unmounted the very component that was about to report it,
+              so a click made the red box vanish and nothing took its place.
+
+              Offered where the wall is hit. The moment somebody is told a
+              ticker is unknown is the moment they want to fix it, and sending
+              them to a settings page is how a two-click task becomes an
+              abandoned one.
+            */}
+            {unknown && (
+              <AddInstrument
+                symbol={unknown}
+                onAdded={() => {
+                  setError(null);
+                }}
+              />
             )}
             {submit.data && (
               <p className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole } from '@zusu/shared';
+import { UserRole, dec } from '@zusu/shared';
 import { buildTestApp, login, type Session, type TestApp } from '../helpers/app.js';
 import { disconnectTestDb, resetDatabase, testDb } from '../helpers/db.js';
 import { createUser } from '../helpers/fixtures.js';
@@ -39,6 +39,28 @@ function instrument(symbol: string, name: string): ProviderInstrument {
   };
 }
 
+function bars(symbol: string, timeframe: string, count: number) {
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const openTime = new Date(Date.UTC(2026, 8, 1, 14, i * 5));
+    out.push({
+      symbol,
+      timeframe,
+      openTime,
+      closeTime: new Date(openTime.getTime() + 60_000),
+      open: dec('100'),
+      high: dec('101'),
+      low: dec('99'),
+      close: dec('100.5'),
+      volume: dec('1000'),
+      vwap: null,
+      tradeCount: 10,
+      isAdjusted: true,
+    });
+  }
+  return out;
+}
+
 function useProvider(found: ProviderInstrument[] | null): void {
   const provider =
     found === null
@@ -49,7 +71,8 @@ function useProvider(found: ProviderInstrument[] | null): void {
           isDelayed: true,
           getQuote: () => Promise.reject(new Error('not used')),
           getQuotes: () => Promise.reject(new Error('not used')),
-          getCandles: () => Promise.resolve([]),
+          getCandles: (query: { symbol: string; timeframe: string }) =>
+            Promise.resolve(bars(query.symbol, query.timeframe, 3)),
           getCorporateActions: () => Promise.resolve([]),
           searchInstruments: () => Promise.resolve(found),
           getCalendar: () => Promise.resolve([]),
@@ -96,6 +119,49 @@ describe('adding a symbol', () => {
 
     const stored = await db.instrument.findUnique({ where: { symbol: 'CRDO' } });
     expect(stored?.exchange).toBe('XNAS');
+  });
+
+  it('fetches intraday bars too, so a paper portfolio can price it', async () => {
+    useProvider([instrument('CRDO', 'Credo')]);
+
+    const response = await add('CRDO');
+
+    // The paper venue quotes from five-minute bars. Fetching only daily ones
+    // leaves a symbol that charts perfectly and marks as a dash, which reads
+    // as a broken price rather than as missing data.
+    expect(response.json().markable).toBe(true);
+    expect(
+      await db.marketDataCandle.count({ where: { symbol: 'CRDO', timeframe: '5m' } }),
+    ).toBeGreaterThan(0);
+    expect(
+      await db.marketDataCandle.count({ where: { symbol: 'CRDO', timeframe: '1d' } }),
+    ).toBeGreaterThan(0);
+  });
+
+  it('says so when no intraday bars came back, rather than reporting plain success', async () => {
+    const provider = {
+      kind: 'FIXTURE',
+      name: 'massive',
+      isDelayed: true,
+      getQuote: () => Promise.reject(new Error('not used')),
+      getQuotes: () => Promise.reject(new Error('not used')),
+      // Daily only: the shape of a plan without intraday history.
+      getCandles: (query: { symbol: string; timeframe: string }) =>
+        Promise.resolve(query.timeframe === '1d' ? bars(query.symbol, '1d', 3) : []),
+      getCorporateActions: () => Promise.resolve([]),
+      searchInstruments: () => Promise.resolve([instrument('CRDO', 'Credo')]),
+      getCalendar: () => Promise.resolve([]),
+      healthCheck: () =>
+        Promise.resolve({ ok: true, latencyMs: 1, detail: null, rateLimitRemaining: null }),
+    } as unknown as MarketDataProvider;
+    vi.spyOn(harness.container.marketData, 'tryResolve').mockReturnValue(provider);
+    vi.spyOn(harness.container.marketData, 'resolve').mockReturnValue(provider);
+
+    const response = await add('CRDO');
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().markable).toBe(false);
+    expect(response.json().candleCount).toBeGreaterThan(0);
   });
 
   it('refuses one the provider has never heard of', async () => {

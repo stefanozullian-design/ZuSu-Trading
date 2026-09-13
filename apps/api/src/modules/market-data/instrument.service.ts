@@ -15,6 +15,15 @@ export interface InstrumentDto {
   isTradable: boolean;
   /** Bars already stored for it, so a caller can tell a chartable symbol apart. */
   candleCount: number;
+  /**
+   * Whether a paper portfolio can put a price on it.
+   *
+   * The paper venue quotes from five-minute bars, so a symbol with only daily
+   * history charts fine and marks as a dash — a distinction worth reporting,
+   * since "added successfully" and "and it still shows no price" would
+   * otherwise be discovered separately.
+   */
+  markable: boolean;
 }
 
 /**
@@ -64,6 +73,7 @@ export class InstrumentService {
       sector: instrument.sector,
       isTradable: instrument.isActive,
       candleCount: 0,
+      markable: false,
     }));
   }
 
@@ -141,18 +151,26 @@ export class InstrumentService {
       return instrument;
     });
 
-    // Bars, so the symbol is chartable and markable immediately. A failure
-    // here leaves the instrument in place: it exists and is simply not yet
-    // backfilled, which the count reports rather than hides.
-    try {
-      await this.sync.sync({ symbols: [created.symbol], days: options.days ?? 365, pacingMs: 0 });
-    } catch {
-      /* reported through candleCount, not swallowed into a lie about success */
+    // Both timeframes, because they answer different questions. Daily bars
+    // are what the charts, indicators and backtests read; five-minute bars are
+    // what the paper venue quotes from. Fetching only the first leaves a
+    // symbol that charts perfectly and marks as a dash, which reads as a
+    // broken price rather than as missing data.
+    for (const [timeframe, days] of [
+      ['1d', options.days ?? 365],
+      ['5m', 30],
+    ] as const) {
+      try {
+        await this.sync.sync({ symbols: [created.symbol], timeframe, days, pacingMs: 0 });
+      } catch {
+        /* reported through the counts below, never as a lie about success */
+      }
     }
 
-    const candleCount = await this.db.marketDataCandle.count({
-      where: { symbol: created.symbol },
-    });
+    const [candleCount, intraday] = await Promise.all([
+      this.db.marketDataCandle.count({ where: { symbol: created.symbol } }),
+      this.db.marketDataCandle.count({ where: { symbol: created.symbol, timeframe: '5m' } }),
+    ]);
 
     return {
       symbol: created.symbol,
@@ -162,6 +180,7 @@ export class InstrumentService {
       sector: created.sector,
       isTradable: created.isTradable,
       candleCount,
+      markable: intraday > 0,
     };
   }
 }

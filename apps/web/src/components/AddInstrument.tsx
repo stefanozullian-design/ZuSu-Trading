@@ -7,6 +7,8 @@ interface Added {
   symbol: string;
   name: string | null;
   candleCount: number;
+  /** Whether a paper portfolio can put a price on it yet. */
+  markable: boolean;
 }
 
 /**
@@ -50,14 +52,22 @@ export function AddInstrument({
 
   if (added) {
     return (
-      <p className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
+      <p
+        className={
+          added.markable
+            ? 'rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300'
+            : 'rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-300'
+        }
+      >
         Added {added.symbol}
         {added.name ? ` — ${added.name}` : ''}.{' '}
-        {added.candleCount > 0
-          ? `${String(added.candleCount)} days of history fetched. You can record the holding now.`
-          : // Said rather than hidden: the instrument exists and cannot yet be
-            // charted or marked, and the reason is the backfill, not the symbol.
-            'No history came back yet, so it will show a dash until the next sync fills it in.'}
+        {added.markable
+          ? `${String(added.candleCount)} bars fetched. Press "Record it" to add the holding.`
+          : // Said rather than left to be discovered: the symbol exists, the
+            // holding can be recorded, and it will show a dash for a price
+            // until intraday bars arrive. Reporting plain success here would
+            // make that dash look like a broken price.
+            'No intraday bars came back, so it will show “unmarked” until the next sync brings some. You can record the holding now either way.'}
       </p>
     );
   }
