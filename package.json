@@ -24,7 +24,7 @@
     "test:unit": "node scripts/with-env.mjs npm run test:unit -w @zusu/api",
     "test:integration": "node scripts/with-env.mjs npm run test:integration -w @zusu/api",
     "backfill:demo": "node scripts/with-env.mjs npm run backfill:demo -w @zusu/api",
-    "sync:market": "node scripts/with-env.mjs npm run sync:market -w @zusu/api",
+    "sync:market": "node scripts/with-env.mjs npm run sync:market -w @zusu/api --",
     "db:generate": "node scripts/with-env.mjs npm run db:generate -w @zusu/api",
     "db:migrate": "node scripts/with-env.mjs npm run db:migrate -w @zusu/api",
     "db:deploy": "node scripts/with-env.mjs npm run db:deploy -w @zusu/api",

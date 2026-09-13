@@ -43,7 +43,8 @@ async function main(): Promise<void> {
   );
   console.log(
     `Pacing at one request every ${String(Math.round(pacingMs / 1000))}s to stay inside the ` +
-      `provider's rate limit — expect roughly ${String(minutes)} minute(s).\n`,
+      `provider's rate limit — expect roughly ${String(minutes)} ` +
+      `${plural(minutes, 'minute', 'minutes')}.\n`,
   );
 
   const run = await container.marketDataSync.sync({

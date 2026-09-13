@@ -81,6 +81,20 @@ describe('launching npm', () => {
   });
 });
 
+describe('argument pass-through', () => {
+  it('lets a root script forward its own arguments to the workspace script', () => {
+    // `npm run sync:market -- --days 90` appends `--days 90` to the root
+    // script, and npm then reads those as *its* flags unless a `--` separates
+    // them. Without the marker the arguments were silently dropped: the
+    // command reported 365 days while the user had asked for 90, and nothing
+    // said otherwise.
+    const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['sync:market']?.trimEnd().endsWith('--')).toBe(true);
+  });
+});
+
 describe('the repository’s own .env.example', () => {
   it('declares the three secrets setup generates', () => {
     const example = readFileSync(join(repoRoot, '.env.example'), 'utf8');
