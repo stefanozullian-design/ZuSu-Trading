@@ -141,7 +141,8 @@ export class WatchlistService {
     if (!instrument) {
       throw new AppError(
         'NOT_FOUND',
-        `${normalised} is not a known instrument. Only instruments the platform has a record of can be watched.`,
+        `${normalised} is not a known instrument. Add the symbol first — the data provider is ` +
+          'asked whether it exists, and its history is fetched at the same time.',
       );
     }
 

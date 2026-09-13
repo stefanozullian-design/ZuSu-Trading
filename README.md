@@ -90,6 +90,24 @@ npm run backfill:demo           # calendars, ~13,700 simulated candles, example 
 
 </details>
 
+### Adding a symbol
+
+Until an installation is told otherwise it knows eight instruments — the ones
+the demo seed writes. `POST /api/market-data/instruments` adds a ninth, and the
+provider decides whether it exists: the symbol is searched for, an exact match
+is required, and its history is backfilled in the same call. A near miss is
+refused rather than accepted as the closest thing, because filing a holding
+under a company nobody chose is worse than refusing one.
+
+Nothing records an instrument this platform cannot price. One would chart as a
+gap, mark as a dash, and fail every risk check with a message about missing
+data rather than about a ticker that was never real. Without a provider the
+request is refused for the same reason.
+
+The offer appears where the wall is hit — the import form, when it reports a
+symbol it does not know — rather than on a settings page, since that is the
+moment somebody wants it.
+
 ### Real market data
 
 With a provider key in `.env` (`MARKET_DATA_PROVIDER=MASSIVE` and

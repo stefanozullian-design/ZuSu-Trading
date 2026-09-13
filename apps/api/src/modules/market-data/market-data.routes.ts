@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Permission, type Decimal } from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
+import { principalOf } from '../../plugins/auth.js';
 import { TIMEFRAMES, type Timeframe } from './types.js';
 
 /**
@@ -30,12 +31,68 @@ const candleQuery = z.object({
 const str = (value: Decimal | null | undefined): string | null =>
   value === null || value === undefined ? null : value.toString();
 
+const instrumentDto = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  assetClass: z.string(),
+  exchange: z.string().nullable(),
+  sector: z.string().nullable(),
+  isTradable: z.boolean(),
+  candleCount: z.number().int(),
+});
+
 export async function registerMarketDataRoutes(
   app: FastifyInstance,
   container: AppContainer,
 ): Promise<void> {
   const typed = app.withTypeProvider<ZodTypeProvider>();
   const read = { preHandler: app.requirePermission(Permission.MARKET_DATA_READ) };
+
+  typed.get(
+    '/instruments/search',
+    {
+      ...read,
+      schema: {
+        tags: ['market-data'],
+        summary: 'Ask the data provider what it knows by this name',
+        description:
+          'The provider is the authority on whether a symbol exists. This platform never ' +
+          'records an instrument it cannot price: one would chart as a gap, mark as a dash, ' +
+          'and fail every risk check with a message about missing data rather than about a ' +
+          'symbol that was never real.',
+        querystring: z.object({ q: z.string().trim().min(1).max(40) }),
+        response: { 200: z.object({ results: z.array(instrumentDto) }) },
+      },
+    },
+    async (request, reply) =>
+      reply.send({
+        results: await container.instruments.search(principalOf(request), request.query.q),
+      }),
+  );
+
+  typed.post(
+    '/instruments',
+    {
+      preHandler: app.requirePermission(Permission.WATCHLIST_WRITE),
+      schema: {
+        tags: ['market-data'],
+        summary: 'Add a symbol the provider confirms exists, and backfill its history',
+        body: z.object({
+          symbol: z.string().trim().min(1).max(12),
+          days: z.number().int().min(1).max(3650).optional(),
+        }),
+        response: { 201: instrumentDto },
+      },
+    },
+    async (request, reply) => {
+      const instrument = await container.instruments.add(
+        principalOf(request),
+        request.body.symbol,
+        request.body.days === undefined ? {} : { days: request.body.days },
+      );
+      return reply.status(201).send(instrument);
+    },
+  );
 
   typed.get(
     '/instruments',

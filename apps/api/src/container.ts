@@ -22,6 +22,7 @@ import { ReconciliationService } from './modules/broker/reconciliation.service.j
 import { AutomationService } from './modules/automation/automation.service.js';
 import { PositionImportService } from './modules/portfolios/position-import.service.js';
 import { MarketDataSyncService } from './modules/market-data/market-data-sync.service.js';
+import { InstrumentService } from './modules/market-data/instrument.service.js';
 import { LiveReadinessService } from './modules/automation/live-readiness.js';
 import { RiskEngine } from './modules/risk/risk-engine.js';
 import { OrderService } from './modules/orders/order.service.js';
@@ -69,6 +70,7 @@ export interface AppContainer {
   risk: RiskEngine;
   reconciliation: ReconciliationService;
   marketDataSync: MarketDataSyncService;
+  instruments: InstrumentService;
   positionImport: PositionImportService;
   readiness: LiveReadinessService;
   automation: AutomationService;
@@ -124,6 +126,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   // fabricated analysis is worse than none, because a reader cannot tell.
   const analysisKey = config().ANTHROPIC_API_KEY;
   const marketDataSync = new MarketDataSyncService(db, marketData, dataQuality, calendar);
+  const instruments = new InstrumentService(db, access, audit, marketData, marketDataSync);
   const positionImport = new PositionImportService(db, access, audit);
   const readiness = new LiveReadinessService(db, brokers);
   const automation = new AutomationService(db, access, audit, readiness, orders);
@@ -163,6 +166,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     risk,
     reconciliation,
     marketDataSync,
+    instruments,
     positionImport,
     readiness,
     automation,

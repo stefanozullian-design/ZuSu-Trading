@@ -120,7 +120,8 @@ export class PositionImportService {
       throw new AppError(
         'VALIDATION_FAILED',
         `${symbol} is not an instrument this platform knows, so it could never be priced, ` +
-          'charted or risk-checked. Add it to a watchlist first.',
+          'charted or risk-checked. Add the symbol first — the data provider is asked whether ' +
+          'it exists, and its history is fetched at the same time.',
       );
     }
 

@@ -3,6 +3,7 @@ import { Bell, Brain, Check, Clock, PackagePlus, RefreshCw, ShieldQuestion, X } 
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { AddInstrument } from '@/components/AddInstrument';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
@@ -783,9 +784,18 @@ function ImportPosition({ portfolioId, canWrite }: { portfolioId: string; canWri
             </p>
 
             {error && (
-              <p className="rounded-md border border-red-500/30 bg-red-500/5 p-2 text-[11px] text-red-400">
-                {error}
-              </p>
+              <div className="space-y-2 rounded-md border border-red-500/30 bg-red-500/5 p-2">
+                <p className="text-[11px] text-red-400">{error}</p>
+                {/*
+                  Offered where the wall is hit. The moment somebody is told a
+                  ticker is unknown is the moment they want to fix it, and
+                  sending them to a settings page to do it is how a two-click
+                  task becomes an abandoned one.
+                */}
+                {/is not an instrument this platform knows/i.test(error) && (
+                  <AddInstrument symbol={symbol} onAdded={() => setError(null)} />
+                )}
+              </div>
             )}
             {submit.data && (
               <p className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
