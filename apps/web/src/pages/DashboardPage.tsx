@@ -28,7 +28,12 @@ import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { AutomationConfig, PortfolioObjective, PortfolioSummary } from '@/lib/types';
+import type {
+  AutomationConfig,
+  EnvironmentInfo,
+  PortfolioObjective,
+  PortfolioSummary,
+} from '@/lib/types';
 
 export function DashboardPage() {
   const { can } = useAuth();
@@ -453,7 +458,22 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
   const [capital, setCapital] = useState('');
   const [ownerId, setOwnerId] = useState<string | null>(defaultOwnerId);
   const [objective, setObjective] = useState<PortfolioObjective | null>(null);
-  const [environment, setEnvironment] = useState<'DEMO' | 'PAPER'>('DEMO');
+  /**
+   * Paper by default wherever real bars exist.
+   *
+   * Practice prices are for finding your way around an installation that has
+   * no market-data provider yet; on one that has, a practice portfolio
+   * produces a track record about a market that never existed. Defaulting to
+   * it made the useless option the easy one.
+   */
+  const { data: deployment } = useQuery({
+    queryKey: ['environment'],
+    queryFn: () => api<EnvironmentInfo>('/api/system/environment'),
+    staleTime: 5 * 60_000,
+  });
+  const [environment, setEnvironment] = useState<'DEMO' | 'PAPER' | null>(null);
+  const chosen: 'DEMO' | 'PAPER' =
+    environment ?? (deployment?.marketDataConfigured ? 'PAPER' : 'DEMO');
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
@@ -462,7 +482,7 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
         method: 'POST',
         body: {
           name,
-          environment,
+          environment: chosen,
           initialCapital: capital,
           baseCurrency: 'USD',
           // Omitted rather than sent as null: the API treats an absent owner
@@ -476,6 +496,7 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
       setName('');
       setCapital('');
       setObjective(null);
+      setEnvironment(null);
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
       await queryClient.invalidateQueries({ queryKey: ['owners'] });
@@ -548,16 +569,16 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
             id="new-portfolio-environment"
             aria-label="Prices"
             className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
-            value={environment}
+            value={chosen}
             onChange={(e) => setEnvironment(e.target.value === 'PAPER' ? 'PAPER' : 'DEMO')}
           >
-            <option value="DEMO">Practice — invented prices</option>
             <option value="PAPER">Paper — real market prices</option>
+            <option value="DEMO">Practice — invented prices</option>
           </select>
         </label>
 
         <p className="text-[11px] text-muted-foreground">
-          {environment === 'PAPER' ? (
+          {chosen === 'PAPER' ? (
             <>
               A <strong>PAPER</strong> portfolio runs on the same real prices as the Market page,
               with fills simulated against them. No money moves and no order reaches a broker — but
@@ -571,6 +592,13 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
             </>
           )}
         </p>
+        {chosen === 'PAPER' && deployment && !deployment.marketDataConfigured && (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-300">
+            This installation has no market-data provider, so a paper portfolio has no prices to
+            mark against. Its positions will show a dash rather than a value until one is
+            configured.
+          </p>
+        )}
         <p className="text-[11px] text-muted-foreground">
           This cannot be changed afterwards. A portfolio is bound to its environment for life — the
           rule that stops practice credentials ever reaching real money. To switch, make another

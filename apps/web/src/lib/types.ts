@@ -33,6 +33,7 @@ export interface EnvironmentInfo {
   usesRealMoney: boolean;
   requiresExplicitConfirmation: boolean;
   liveTradingAllowed: boolean;
+  marketDataConfigured: boolean;
 }
 
 export type PortfolioObjective = 'DAY_TRADING' | 'GROWTH' | 'INCOME' | 'RETIREMENT';

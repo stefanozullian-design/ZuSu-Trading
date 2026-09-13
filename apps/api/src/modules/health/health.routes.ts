@@ -110,6 +110,13 @@ export async function registerSystemRoutes(
             usesRealMoney: z.boolean(),
             requiresExplicitConfirmation: z.boolean(),
             liveTradingAllowed: z.boolean(),
+            /**
+             * Whether real bars are available at all. Paper portfolios price
+             * from stored candles, so without a provider a paper book has
+             * nothing to mark against — and offering it as the obvious choice
+             * would be offering a portfolio that cannot show a price.
+             */
+            marketDataConfigured: z.boolean(),
           }),
         },
       },
@@ -126,6 +133,7 @@ export async function registerSystemRoutes(
         usesRealMoney: descriptor.usesRealMoney,
         requiresExplicitConfirmation: descriptor.requiresExplicitConfirmation,
         liveTradingAllowed: cfg.ALLOW_LIVE_TRADING,
+        marketDataConfigured: cfg.MARKET_DATA_PROVIDER !== 'NONE',
       });
     },
   );

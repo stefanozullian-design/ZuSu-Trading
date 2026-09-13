@@ -13,6 +13,7 @@ const environment = (overrides: Partial<EnvironmentInfo> = {}): EnvironmentInfo 
   usesRealMoney: false,
   requiresExplicitConfirmation: false,
   liveTradingAllowed: false,
+  marketDataConfigured: true,
   ...overrides,
 });
 
