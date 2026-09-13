@@ -25,6 +25,7 @@ const tools = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
 const updater = (await import(join(repoRoot, 'scripts/update.mjs'))) as {
   localEdits: (porcelain: string) => string[];
   classifyEdits: (porcelain: string) => { generated: string[]; authored: string[] };
+  adviceForUpdate: (message: string) => string | null;
 };
 
 const launcher = (await import(join(repoRoot, 'scripts/start.mjs'))) as {
@@ -229,5 +230,34 @@ describe('generated files', () => {
     expect(updater.localEdits(' M package-lock.json\n M apps/web/src/App.tsx')).toEqual([
       'apps/web/src/App.tsx',
     ]);
+  });
+});
+
+/**
+ * The update that cannot finish while ZuSu is open.
+ *
+ * Windows will not let a file be replaced while a process holds it open, so
+ * rebuilding the database client fails with EPERM on a rename — a message
+ * about a temporary filename, for a situation whose entire cause is that the
+ * app is still running.
+ */
+describe('why an update failed', () => {
+  it('reads a locked file as ZuSu still being open', () => {
+    const advice = updater.adviceForUpdate(
+      "EPERM: operation not permitted, rename '…query_engine-windows.dll.node.tmp3852' -> '…'",
+    );
+
+    expect(advice).toContain('still running');
+    expect(advice).toContain('Close the ZuSu window');
+  });
+
+  it('reads a busy resource the same way', () => {
+    expect(updater.adviceForUpdate('EBUSY: resource busy or locked')).toContain('still running');
+  });
+
+  it('says nothing for a failure it does not recognise', () => {
+    // A confident wrong instruction is worse than the raw message, which can
+    // at least be searched for.
+    expect(updater.adviceForUpdate('ENOSPC: no space left on device')).toBeNull();
   });
 });
