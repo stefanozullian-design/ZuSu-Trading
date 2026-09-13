@@ -14,7 +14,7 @@ import { analysisResultSchema, screenResultSchema } from './types.js';
 
 describe('costing', () => {
   it('prices a call from the tokens the provider reported', () => {
-    const cost = costOf('claude-haiku-4-5-20251001', {
+    const cost = costOf('claude-haiku-4-5', {
       inputTokens: 1_000_000,
       outputTokens: 1_000_000,
     });
@@ -26,8 +26,8 @@ describe('costing', () => {
   it('scales linearly and keeps the arithmetic exact', () => {
     const cost = costOf('claude-sonnet-5', { inputTokens: 1_234, outputTokens: 567 });
 
-    // 1,234 × 3/1e6 + 567 × 15/1e6, computed as decimals rather than floats.
-    const expected = dec('3').times(1_234).div(1_000_000).plus(dec('15').times(567).div(1_000_000));
+    // 1,234 × 2/1e6 + 567 × 10/1e6, computed as decimals rather than floats.
+    const expected = dec('2').times(1_234).div(1_000_000).plus(dec('10').times(567).div(1_000_000));
     expect(cost.toString()).toBe(expected.toString());
   });
 

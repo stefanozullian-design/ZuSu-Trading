@@ -21,26 +21,35 @@ export interface ModelPrice {
 }
 
 export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = Object.freeze({
-  'claude-haiku-4-5-20251001': {
+  'claude-haiku-4-5': {
     inputPerMillion: '1',
     outputPerMillion: '5',
-    asOf: '2026-09-12',
+    asOf: '2026-09-13',
   },
   'claude-sonnet-5': {
-    inputPerMillion: '3',
-    outputPerMillion: '15',
-    asOf: '2026-09-12',
+    inputPerMillion: '2',
+    outputPerMillion: '10',
+    asOf: '2026-09-13',
   },
   'claude-opus-5': {
-    inputPerMillion: '15',
-    outputPerMillion: '75',
-    asOf: '2026-09-12',
+    inputPerMillion: '5',
+    outputPerMillion: '25',
+    asOf: '2026-09-13',
   },
 });
 
-/** The cheap screening model, and the one that writes the analysis. */
-export const SCREEN_MODEL = 'claude-haiku-4-5-20251001';
-export const ANALYSIS_MODEL = 'claude-sonnet-5';
+/**
+ * The cheap screening model, and the one that writes the analysis.
+ *
+ * The screen is a classification over a handful of indicator values and wants
+ * the cheapest model that can do it. The analysis is read by a person deciding
+ * whether to commit money, so it gets the most capable one — and at $5/$25 per
+ * million tokens it costs a third of what this table previously assumed Opus
+ * did, which is the kind of error that makes a budget guard lie in both
+ * directions.
+ */
+export const SCREEN_MODEL = 'claude-haiku-4-5';
+export const ANALYSIS_MODEL = 'claude-opus-5';
 
 export class UnknownModelPriceError extends Error {
   constructor(model: string) {

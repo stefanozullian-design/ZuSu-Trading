@@ -155,7 +155,7 @@ export class AnalysisService {
   /**
    * Stage one: screens a list of symbols down to a shortlist.
    *
-   * Cheap model, low temperature, and an output schema that cannot recommend a
+   * Cheap model, no reasoning step, and an output schema that cannot recommend a
    * trade. Symbols the screen sets aside are returned with their reason, so a
    * shortlist of two out of twenty is inspectable rather than mysterious.
    */
@@ -183,7 +183,7 @@ export class AnalysisService {
       system: SCREEN_SYSTEM,
       user,
       maxOutputTokens: 1_000,
-      temperature: 0,
+      thinking: 'off',
       schema: screenResultSchema,
       portfolioId: input.portfolioId ?? null,
       signalId: null,
@@ -236,7 +236,7 @@ export class AnalysisService {
       system: ANALYSIS_SYSTEM,
       user,
       maxOutputTokens: 1_500,
-      temperature: 0.2,
+      thinking: 'adaptive',
       schema: analysisResultSchema,
       portfolioId: signal.portfolioId,
       signalId: signal.id,
@@ -259,7 +259,7 @@ export class AnalysisService {
     system: string;
     user: string;
     maxOutputTokens: number;
-    temperature: number;
+    thinking: 'adaptive' | 'off';
     schema: z.ZodType<T, z.ZodTypeDef, unknown>;
     portfolioId: string | null;
     signalId: string | null;
@@ -272,7 +272,7 @@ export class AnalysisService {
       system: input.system,
       user: input.user,
       maxOutputTokens: input.maxOutputTokens,
-      temperature: input.temperature,
+      thinking: input.thinking,
     };
 
     if (!this.provider.isConfigured()) {
@@ -322,7 +322,7 @@ export class AnalysisService {
         system: input.system,
         user: input.user,
         maxOutputTokens: input.maxOutputTokens,
-        temperature: input.temperature,
+        thinking: input.thinking,
       });
     } catch (error) {
       const message =

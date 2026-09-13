@@ -81,9 +81,14 @@ export class AnthropicProvider implements AnalysisProvider {
         body: JSON.stringify({
           model: request.model,
           max_tokens: request.maxOutputTokens,
-          temperature: request.temperature,
           system: request.system,
           messages: [{ role: 'user', content: request.user }],
+          // Sampling parameters are rejected outright by the current models —
+          // `temperature` on Opus 5 or Sonnet 5 is a 400, not a hint that is
+          // quietly ignored. This adapter sent one on every call, which means
+          // it could never have completed a single request against a live API.
+          // Depth is controlled by thinking and effort now, not by sampling.
+          ...(request.thinking === 'adaptive' ? { thinking: { type: 'adaptive' } } : {}),
         }),
         signal: controller.signal,
       });

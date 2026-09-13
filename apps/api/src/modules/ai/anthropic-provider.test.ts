@@ -12,11 +12,11 @@ import { AnalysisError, type CompletionRequest } from './types.js';
  */
 
 const request: CompletionRequest = {
-  model: 'claude-haiku-4-5-20251001',
+  model: 'claude-haiku-4-5',
   system: 'You screen symbols.',
   user: '{"symbols":["AAPL"]}',
   maxOutputTokens: 500,
-  temperature: 0,
+  thinking: 'off',
 };
 
 function transport(
@@ -32,7 +32,7 @@ function transport(
 }
 
 const goodBody = {
-  model: 'claude-haiku-4-5-20251001',
+  model: 'claude-haiku-4-5',
   content: [{ type: 'text', text: '{"shortlist":[]}' }],
   stop_reason: 'end_turn',
   usage: { input_tokens: 120, output_tokens: 40 },
@@ -62,10 +62,13 @@ describe('the request it sends', () => {
     const body = JSON.parse(String(calls[0]!.init.body)) as Record<string, unknown>;
     expect(body.system).toBe('You screen symbols.');
     expect(body.messages).toEqual([{ role: 'user', content: '{"symbols":["AAPL"]}' }]);
-    // Both are explicit rather than defaulted: a screen wants zero temperature
-    // and a bounded reply.
-    expect(body.temperature).toBe(0);
     expect(body.max_tokens).toBe(500);
+    // Never sent. The current models reject sampling parameters outright — a
+    // `temperature` on Opus 5 or Sonnet 5 is a 400, so an adapter that sends
+    // one cannot complete a single call.
+    expect(body.temperature).toBeUndefined();
+    // A screen is a classification and does not reason first.
+    expect(body.thinking).toBeUndefined();
   });
 });
 
@@ -175,5 +178,19 @@ describe('without a key', () => {
     // A fabricated analysis is worse than none: a reader cannot tell.
     await expect(provider.complete()).rejects.toThrow(/will not substitute/);
     await expect(provider.complete()).rejects.toBeInstanceOf(AnalysisError);
+  });
+});
+
+describe('reasoning', () => {
+  it('asks for adaptive thinking when the caller wants it', async () => {
+    const { fetchImpl, calls } = transport(200, goodBody);
+    const provider = new AnthropicProvider({ apiKey: 'k', fetchImpl });
+
+    await provider.complete({ ...request, thinking: 'adaptive' });
+
+    const body = JSON.parse(String(calls[0]!.init.body)) as Record<string, unknown>;
+    // Depth is controlled by thinking now, not by sampling.
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.temperature).toBeUndefined();
   });
 });

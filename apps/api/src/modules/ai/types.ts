@@ -118,8 +118,14 @@ export interface CompletionRequest {
   /** The structured context. Never a free-form conversation. */
   user: string;
   maxOutputTokens: number;
-  /** Cheap-stage calls want a low temperature; both stages set it explicitly. */
-  temperature: number;
+  /**
+   * Whether the model reasons before answering.
+   *
+   * Replaces `temperature`, which the current models reject. The screen is a
+   * classification and wants none; the analysis is read by someone deciding
+   * whether to commit money and gets `adaptive`.
+   */
+  thinking: 'adaptive' | 'off';
 }
 
 export interface CompletionResponse {
