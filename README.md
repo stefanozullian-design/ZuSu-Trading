@@ -257,6 +257,17 @@ only when none is selected. Otherwise it would say "synthetic market data" over
 a book priced from the real market, on the one element that exists so the
 environment can never be mistaken.
 
+A portfolio can move **between DEMO and PAPER**, and never to or from LIVE.
+The invariant that a portfolio's environment is fixed for life was narrowed
+rather than dropped: the database trigger still refuses, in PostgreSQL, the
+only transition that was ever dangerous. Between the two simulated
+environments no credential crosses anything and no money can move — the cost
+is to the track record, and that is handled where it belongs. The switch
+records its instant, performance is measured from it with a note saying so,
+the daily figure refuses to compare across it, and open holdings come across as
+declarations rather than as fills this environment never saw. Nothing earlier
+is deleted; it is simply no longer counted as though it happened here.
+
 LIVE is not reachable. `BrokerRegistry.isSupported` covers DEMO and PAPER only,
 creating a live portfolio is refused while `ALLOW_LIVE_TRADING` is false, and
 the Robinhood adapter — though written and tested against a fake transport —

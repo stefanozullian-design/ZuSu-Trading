@@ -11,7 +11,16 @@ import { useViewedPortfolios } from '@/hooks/useViewedPortfolios';
 import { CombinedView } from '@/components/CombinedView';
 import { OwnersPanel } from '@/components/OwnersPanel';
 import { UNASSIGNED, useOwnerFilter } from '@/hooks/useOwnerFilter';
-import { OBJECTIVE_TITLES, ObjectivePicker, OwnerFilter, OwnerPicker } from '@/components/Owners';
+import {
+  ENVIRONMENT_LABEL,
+  ENVIRONMENT_TONE,
+  EnvironmentFilter,
+  OBJECTIVE_TITLES,
+  ObjectivePicker,
+  OwnerFilter,
+  OwnerPicker,
+} from '@/components/Owners';
+import { useEnvironmentFilter } from '@/hooks/useEnvironmentFilter';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -30,7 +39,19 @@ export function DashboardPage() {
   const canSeeOwners = can('client:read');
   const { ownerId, setOwnerId } = useOwnerFilter();
 
-  const { portfolios, isLoading, error } = usePortfolios({ includeClosed: showClosed });
+  const {
+    portfolios: allPortfolios,
+    isLoading,
+    error,
+  } = usePortfolios({ includeClosed: showClosed });
+  const { environment: environmentFilter, setEnvironment } = useEnvironmentFilter();
+
+  // Filtered before anything downstream sees it, so a remembered selection
+  // that the filter hides falls back the same way a closed one does.
+  const environmentsPresent = [...new Set((allPortfolios ?? []).map((p) => p.environment))].sort();
+  const portfolios = allPortfolios?.filter(
+    (p) => environmentFilter === null || p.environment === environmentFilter,
+  );
 
   // Shared with every other page, so clicking through to Trading keeps the
   // book you were looking at. Still exactly one: every page that commits
@@ -121,6 +142,11 @@ export function DashboardPage() {
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6">
       <div className="flex flex-wrap items-center gap-3">
         <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+        <EnvironmentFilter
+          environment={environmentFilter}
+          onChange={setEnvironment}
+          available={environmentsPresent}
+        />
         {canSeeOwners && (
           <button
             type="button"
@@ -161,7 +187,19 @@ export function DashboardPage() {
             >
               <span className="flex items-center gap-2">
                 {portfolio.name}
-                <span className="text-[10px] uppercase opacity-70">{portfolio.environment}</span>
+                {/*
+                  Coloured by environment, the same colours the banner uses:
+                  practice blue, paper amber. Two portfolios with the same name
+                  and different prices are otherwise told apart only by reading.
+                */}
+                <span
+                  className={cn(
+                    'rounded border px-1 text-[10px] uppercase',
+                    ENVIRONMENT_TONE[portfolio.environment] ?? 'border-border',
+                  )}
+                >
+                  {ENVIRONMENT_LABEL[portfolio.environment] ?? portfolio.environment}
+                </span>
               </span>
               {/*
                 Whose it is, on the tab itself. Two people can each have a
@@ -607,6 +645,23 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
     onError: (err: Error) => setError(explainApiError(err)),
   });
 
+  const switching = useMutation({
+    mutationFn: (environment: string) =>
+      api<PortfolioSummary>(`/api/portfolios/${portfolio.id}/environment`, {
+        method: 'POST',
+        body: { environment },
+      }),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      // The marks, the positions and the performance all change meaning with
+      // the environment, so nothing cached about this portfolio survives.
+      await queryClient.invalidateQueries({ queryKey: ['positions'] });
+      await queryClient.invalidateQueries({ queryKey: ['performance'] });
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
   if (!can('portfolio:write')) return null;
 
   if (renaming) {
@@ -642,6 +697,7 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
   }
 
   if (reassigning) {
+    const other = portfolio.environment === 'PAPER' ? 'DEMO' : 'PAPER';
     return (
       <Card className="max-w-xl">
         <CardHeader>
@@ -672,6 +728,34 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
             are already in force — those are on the Risk page, and only an administrator can change
             them.
           </p>
+          {portfolio.environment !== 'LIVE' && (
+            <div className="space-y-1 border-t border-border pt-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Prices</p>
+              <p className="text-[11px] text-muted-foreground">
+                This portfolio runs on{' '}
+                <strong>
+                  {portfolio.environment === 'PAPER'
+                    ? 'real market prices'
+                    : 'prices invented by a simulator'}
+                </strong>
+                . Moving it to {other === 'PAPER' ? 'paper' : 'practice'} keeps the holdings and the
+                cash, and starts the track record again from the moment you switch — everything
+                before it happened under different prices and is not counted as though it happened
+                here. Nothing is deleted.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={switching.isPending}
+                onClick={() => switching.mutate(other)}
+              >
+                {switching.isPending
+                  ? 'Switching…'
+                  : `Move to ${other === 'PAPER' ? 'real market prices' : 'practice prices'}`}
+              </Button>
+            </div>
+          )}
+
           {error && <p className="text-[11px] text-red-400">{error}</p>}
           <Button size="sm" variant="ghost" onClick={() => setReassigning(false)}>
             Done

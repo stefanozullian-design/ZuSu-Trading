@@ -219,6 +219,86 @@ export class PortfolioService {
     return this.summarise(portfolio, portfolio.client);
   }
 
+  /**
+   * Moves a portfolio between practice and paper.
+   *
+   * The binding of a portfolio to one environment is what makes "practice
+   * credentials can never place a live order" structural rather than a
+   * promise, and it holds: nothing moves to or from LIVE, and the schema does
+   * not even offer it. Between DEMO and PAPER neither side can reach a broker,
+   * so nothing about safety is at stake.
+   *
+   * What is at stake is the track record. A paper portfolio's numbers are
+   * worth something because they came from real prices; one that spent its
+   * first month on invented ones would carry that fiction forward silently. So
+   * the switch draws a line: the instant is recorded, performance is measured
+   * from it, and the holdings come across as declarations rather than as fills
+   * this environment never saw. Nothing earlier is deleted — it is simply no
+   * longer counted as though it happened here.
+   */
+  async switchEnvironment(
+    principal: Principal,
+    portfolioId: string,
+    target: 'DEMO' | 'PAPER',
+    at: Date = new Date(),
+  ): Promise<PortfolioSummary> {
+    const before = await this.access.assertPortfolioAccess(principal, portfolioId, {
+      permission: Permission.PORTFOLIO_WRITE,
+    });
+
+    if (before.environment === TradingEnvironment.LIVE) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'A live portfolio cannot be moved. Its record is of real money and real fills, and ' +
+          'relabelling that as practice would make a trading record something that can be ' +
+          'rewritten.',
+      );
+    }
+
+    if (before.environment === target) {
+      throw new AppError('VALIDATION_FAILED', `This portfolio is already ${target}.`);
+    }
+
+    const updated = await this.db.$transaction(async (tx) => {
+      const next = await tx.portfolio.update({
+        where: { id: portfolioId },
+        data: { environment: target as TradingEnvironment, environmentChangedAt: at },
+        include: { client: { select: { id: true, name: true } } },
+      });
+
+      // The open positions come across, and become declarations: this
+      // environment never filled them, and calling them TRADED here would
+      // attribute a fill to prices that were never involved.
+      await tx.position.updateMany({
+        where: { portfolioId, status: 'OPEN' },
+        data: { origin: 'IMPORTED' },
+      });
+
+      await this.audit.record(
+        {
+          action: AuditAction.ENVIRONMENT_SWITCHED,
+          actorUserId: principal.id,
+          entityType: 'Portfolio',
+          entityId: portfolioId,
+          portfolioId,
+          environment: target as TradingEnvironment,
+          before: { environment: before.environment },
+          after: { environment: target, environmentChangedAt: at.toISOString() },
+        },
+        tx,
+      );
+
+      return next;
+    });
+
+    // The simulated venues hold their state in memory and key it by portfolio,
+    // so a stale adapter would go on quoting the environment this portfolio
+    // just left.
+    this.brokers.reset();
+
+    return this.summarise(updated, updated.client);
+  }
+
   async update(
     principal: Principal,
     portfolioId: string,
@@ -346,7 +426,19 @@ export class PortfolioService {
       }),
       this.db.riskLimit.findFirst({ where: { portfolioId: portfolio.id, isActive: true } }),
       this.db.portfolioSnapshot.findFirst({
-        where: { portfolioId: portfolio.id, asOf: { lt: startOfUtcDay(new Date()) } },
+        where: {
+          portfolioId: portfolio.id,
+          asOf: {
+            lt: startOfUtcDay(new Date()),
+            // Never across an environment switch. A snapshot taken under
+            // invented prices, compared against a mark from the real market,
+            // produces a day's "gain" that is entirely the price source
+            // changing — the first number a person sees after switching, and a
+            // wholly fictional one. With nothing to compare against, the
+            // dashboard says so, as it does on a portfolio's first day.
+            ...(portfolio.environmentChangedAt ? { gte: portfolio.environmentChangedAt } : {}),
+          },
+        },
         orderBy: { asOf: 'desc' },
       }),
       this.db.position.count({ where: { portfolioId: portfolio.id, status: 'OPEN' } }),
@@ -392,6 +484,7 @@ export class PortfolioService {
       clientId: portfolio.clientId,
       clientName: client?.name ?? null,
       objective: portfolio.objective,
+      environmentChangedAt: portfolio.environmentChangedAt?.toISOString() ?? null,
       baseCurrency: portfolio.baseCurrency,
       executionMode: portfolio.executionMode as ExecutionMode,
       tradingState: portfolio.tradingState as TradingState,

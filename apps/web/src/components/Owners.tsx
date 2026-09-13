@@ -306,3 +306,54 @@ export function ObjectivePicker({
     </label>
   );
 }
+
+/** How each environment reads on a portfolio tab. */
+export const ENVIRONMENT_TONE: Record<string, string> = {
+  DEMO: 'border-sky-500/60 text-sky-300',
+  PAPER: 'border-amber-500/60 text-amber-300',
+  LIVE: 'border-red-500/60 text-red-300',
+};
+
+export const ENVIRONMENT_LABEL: Record<string, string> = {
+  DEMO: 'Practice',
+  PAPER: 'Paper',
+  LIVE: 'Live',
+};
+
+/**
+ * Chooses which environment's portfolios to show.
+ *
+ * Offered only when there is more than one to choose between: a filter whose
+ * every option returns the same list is furniture.
+ */
+export function EnvironmentFilter({
+  environment,
+  onChange,
+  available,
+}: {
+  environment: string | null;
+  onChange: (environment: string | null) => void;
+  available: string[];
+}) {
+  if (available.length < 2) return null;
+
+  return (
+    <label className="flex flex-wrap items-center gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Prices</span>
+      <select
+        id="environment-filter"
+        aria-label="Prices filter"
+        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+        value={environment ?? ''}
+        onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
+      >
+        <option value="">All</option>
+        {available.map((env) => (
+          <option key={env} value={env}>
+            {ENVIRONMENT_LABEL[env] ?? env}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

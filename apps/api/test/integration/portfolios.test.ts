@@ -785,3 +785,183 @@ describe('editing an owner', () => {
     expect(byViewer.statusCode).toBe(403);
   });
 });
+
+/**
+ * Moving a portfolio between practice and paper.
+ *
+ * The binding of a portfolio to one environment is what makes "practice
+ * credentials can never place a live order" structural rather than a promise.
+ * Between DEMO and PAPER neither side can reach a broker, so nothing about
+ * safety is at stake — what is at stake is the track record, and that is what
+ * these tests are about.
+ */
+describe('switching environment', () => {
+  async function make(payload: Record<string, unknown> = {}) {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Switchable', environment: 'DEMO', initialCapital: '10000', ...payload },
+    });
+    expect(response.statusCode).toBe(201);
+    return response.json();
+  }
+
+  async function switchTo(id: string, environment: string) {
+    return harness.app.inject({
+      method: 'POST',
+      url: `/api/portfolios/${id}/environment`,
+      headers: session.headers(),
+      payload: { environment },
+    });
+  }
+
+  it('moves a practice portfolio to paper and records when', async () => {
+    const created = await make();
+
+    const response = await switchTo(created.id, 'PAPER');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().environment).toBe('PAPER');
+    expect(response.json().environmentChangedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('refuses to make a portfolio live, at the schema rather than in code', async () => {
+    const created = await make();
+
+    // LIVE is not among the accepted values, so the request never reaches a
+    // decision. The guarantee is structural rather than a check somebody could
+    // later relax.
+    expect((await switchTo(created.id, 'LIVE')).statusCode).toBe(422);
+  });
+
+  it('refuses to move a live portfolio, whose record is of real money', async () => {
+    const live = await db.portfolio.create({
+      data: {
+        name: 'Live book',
+        environment: 'LIVE',
+        initialCapital: '1000',
+        cashBalance: '1000',
+      },
+    });
+    await grantPortfolioAccess(
+      db,
+      (await db.user.findUniqueOrThrow({ where: { email: 'pm@test.local' } })).id,
+      live.id,
+      true,
+    );
+
+    const response = await switchTo(live.id, 'PAPER');
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.message).toMatch(/real money/i);
+  });
+
+  it('refuses a switch to where it already is', async () => {
+    const created = await make();
+    expect((await switchTo(created.id, 'DEMO')).statusCode).toBe(422);
+  });
+
+  it('carries the holdings across as declarations, not as fills', async () => {
+    const created = await make();
+    await db.position.create({
+      data: {
+        portfolioId: created.id,
+        symbol: 'AAPL',
+        assetClass: 'EQUITY',
+        quantity: '10',
+        averageEntryPrice: '100',
+        status: 'OPEN',
+        origin: 'TRADED',
+        openedAt: new Date(),
+      },
+    });
+
+    await switchTo(created.id, 'PAPER');
+
+    // This environment never filled them. Calling them TRADED here would
+    // attribute a fill to prices that were never involved.
+    const position = await db.position.findFirstOrThrow({ where: { portfolioId: created.id } });
+    expect(position.origin).toBe('IMPORTED');
+    expect(position.quantity.toString()).toBe('10');
+    expect(position.averageEntryPrice.toString()).toBe('100');
+  });
+
+  it('records the move on both sides of the audit log', async () => {
+    const created = await make();
+    await switchTo(created.id, 'PAPER');
+
+    const entry = await db.auditLog.findFirstOrThrow({
+      where: { entityId: created.id, action: AuditAction.ENVIRONMENT_SWITCHED },
+      orderBy: { seq: 'desc' },
+    });
+    expect((entry.beforeValue as { environment: string }).environment).toBe('DEMO');
+    expect((entry.afterValue as { environment: string }).environment).toBe('PAPER');
+  });
+
+  it('reports no day rather than a gain invented by the switch', async () => {
+    const created = await make();
+    await db.portfolioSnapshot.create({
+      data: {
+        portfolioId: created.id,
+        asOf: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        equity: '10000',
+        cashBalance: '10000',
+        positionsValue: '0',
+        realizedPnl: '0',
+        unrealizedPnl: '0',
+        feesTotal: '0',
+      },
+    });
+
+    await switchTo(created.id, 'PAPER');
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/portfolios/${created.id}`,
+      headers: session.headers(),
+    });
+
+    // A snapshot taken under invented prices, compared against a mark from the
+    // real market, is a day's "gain" that is entirely the price source
+    // changing — and it is the first number a person sees after switching.
+    expect(response.json().dailyPnl).toBeNull();
+  });
+
+  it('measures performance from the switch, and says so', async () => {
+    const created = await make();
+
+    const before = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    await db.portfolioSnapshot.create({
+      data: {
+        portfolioId: created.id,
+        asOf: before,
+        equity: '10000',
+        cashBalance: '10000',
+        positionsValue: '0',
+        realizedPnl: '0',
+        unrealizedPnl: '0',
+        feesTotal: '0',
+      },
+    });
+
+    await switchTo(created.id, 'PAPER');
+
+    const report = await harness.app.inject({
+      method: 'GET',
+      url:
+        `/api/performance/report?portfolioId=${created.id}` +
+        `&from=${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()}` +
+        `&to=${new Date().toISOString()}`,
+      headers: session.headers(),
+    });
+
+    expect(report.statusCode).toBe(200);
+    const body = report.json();
+
+    // Chaining across the switch would produce a return nobody could
+    // interpret, and it would read as one continuous record.
+    expect(new Date(body.from).getTime()).toBeGreaterThan(before.getTime());
+    expect((body.notes as string[]).join(' ')).toMatch(/became PAPER/i);
+  });
+});

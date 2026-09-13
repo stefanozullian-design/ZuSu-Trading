@@ -6,6 +6,7 @@ import {
   createPortfolioSchema,
   portfolioSummarySchema,
   positionSchema,
+  switchEnvironmentSchema,
   updatePortfolioSchema,
 } from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
@@ -127,6 +128,33 @@ export async function registerPortfolioRoutes(
     async (request, reply) =>
       reply.send(
         await container.portfolios.update(principalOf(request), request.params.id, request.body),
+      ),
+  );
+
+  typed.post(
+    '/:id/environment',
+    {
+      preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'Move a portfolio between practice and paper',
+        description:
+          'LIVE is absent from the accepted values, so a request to become live is rejected by ' +
+          'the schema before any code decides. The switch draws a line: holdings come across as ' +
+          'declarations and performance is measured from the switch, because everything before ' +
+          'it happened under other prices.',
+        params: idParams,
+        body: switchEnvironmentSchema,
+        response: { 200: portfolioSummarySchema },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await container.portfolios.switchEnvironment(
+          principalOf(request),
+          request.params.id,
+          request.body.environment,
+        ),
       ),
   );
 

@@ -174,6 +174,19 @@ export const createPortfolioSchema = z.object({
 });
 export type CreatePortfolioInput = z.infer<typeof createPortfolioSchema>;
 
+/**
+ * Moving a portfolio between practice and paper.
+ *
+ * Its own route and its own shape rather than a field on the update patch: it
+ * is not an edit but an event, with consequences the caller should have to
+ * name deliberately. LIVE is absent from the enum at all, so a request to
+ * become live is rejected by the schema before any code has to decide.
+ */
+export const switchEnvironmentSchema = z.object({
+  environment: z.enum(['DEMO', 'PAPER']),
+});
+export type SwitchEnvironmentInput = z.infer<typeof switchEnvironmentSchema>;
+
 export const updatePortfolioSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
@@ -196,6 +209,8 @@ export const portfolioSummarySchema = z.object({
   clientId: z.string().uuid().nullable(),
   clientName: z.string().nullable(),
   objective: portfolioObjectiveSchema.nullable(),
+  /** ISO instant of the last environment switch, or null if it never moved. */
+  environmentChangedAt: z.string().nullable(),
   baseCurrency: z.string(),
   executionMode: executionModeSchema,
   tradingState: tradingStateSchema,

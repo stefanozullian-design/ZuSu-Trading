@@ -387,6 +387,42 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('status')).toContainText(/synthetic/i);
   });
 
+  test('moves a portfolio to real prices, and everything follows', async ({ page }) => {
+    await makePortfolio(page, 'E2E Switch Me', '20000');
+    await page.getByRole('button', { name: /E2E Switch Me/ }).click();
+    await expect(page.getByRole('status')).toContainText(/synthetic/i);
+
+    await page.getByRole('button', { name: /owner & purpose/i }).click();
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/environment') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /move to real market prices/i }).click(),
+    ]);
+    await page.getByRole('button', { name: /^Done$/ }).click();
+
+    // The banner, the tab and the filter all describe one portfolio, so they
+    // have to agree about it.
+    await expect(page.getByRole('status')).toContainText(/real market data/i);
+    await expect(page.getByRole('button', { name: /E2E Switch Me/ })).toContainText(/paper/i);
+
+    await page.getByLabel('Prices filter').selectOption('DEMO');
+    await expect(page.getByRole('button', { name: /E2E Switch Me/ })).toHaveCount(0);
+    await page.getByLabel('Prices filter').selectOption('PAPER');
+    await expect(page.getByRole('button', { name: /E2E Switch Me/ })).toBeVisible();
+    await page.getByLabel('Prices filter').selectOption('');
+  });
+
+  test('offers no way to make a portfolio live', async ({ page }) => {
+    await page.getByRole('button', { name: /Demo Portfolio/ }).click();
+    await page.getByRole('button', { name: /owner & purpose/i }).click();
+
+    // Live is not a thing this platform can be talked into. No control offers
+    // it, the API rejects the value at its schema, and the database refuses
+    // the transition in a trigger.
+    await expect(page.getByRole('button', { name: /move to live/i })).toHaveCount(0);
+  });
+
   test('keeps the chosen portfolio when you change page', async ({ page }) => {
     // Each page used to keep its own selection, so picking a book here and
     // clicking through to Trading landed you on whichever one came first.

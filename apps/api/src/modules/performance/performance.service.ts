@@ -233,13 +233,26 @@ export class PerformanceService {
       permission: Permission.PERFORMANCE_READ,
     });
 
+    // A portfolio that changed environment changed what its numbers mean: the
+    // prices before the switch were a different market, or none at all.
+    // Chaining across that instant produces a return nobody could interpret,
+    // and it would read as one continuous record. So the window starts at the
+    // switch, and the report says that it did rather than quietly reporting a
+    // shorter period than was asked for.
+    const portfolio = await this.db.portfolio.findUnique({
+      where: { id: portfolioId },
+      select: { environmentChangedAt: true, environment: true },
+    });
+    const switchedAt = portfolio?.environmentChangedAt ?? null;
+    const from = switchedAt && switchedAt > window.from ? switchedAt : window.from;
+
     const snapshots = await this.db.portfolioSnapshot.findMany({
-      where: { portfolioId, asOf: { gte: window.from, lte: window.to } },
+      where: { portfolioId, asOf: { gte: from, lte: window.to } },
       orderBy: { asOf: 'asc' },
     });
 
     const flows = await this.db.cashFlow.findMany({
-      where: { portfolioId, occurredAt: { gte: window.from, lte: window.to } },
+      where: { portfolioId, occurredAt: { gte: from, lte: window.to } },
       orderBy: { occurredAt: 'asc' },
     });
 
@@ -256,7 +269,7 @@ export class PerformanceService {
 
     return {
       portfolioId,
-      from: window.from,
+      from,
       to: window.to,
       openingEquity: openingEquity.toString(),
       closingEquity: closingEquity.toString(),
@@ -277,6 +290,13 @@ export class PerformanceService {
       snapshots: views,
       notes: [
         ...NOTES,
+        ...(switchedAt && switchedAt > window.from
+          ? [
+              `This portfolio became ${String(portfolio?.environment)} on ` +
+                `${switchedAt.toISOString().slice(0, 10)}, so the figures start there. ` +
+                'Anything earlier happened under different prices and is not counted here.',
+            ]
+          : []),
         ...(views.length < 2
           ? [
               'Fewer than two snapshots in this window, so the time-weighted return is not reported rather than guessed from one point.',

@@ -417,6 +417,9 @@ model Portfolio {
   executionMode  ExecutionMode      @default(MANUAL_APPROVAL) @map("execution_mode")
   /// What the money is for. Null on portfolios created before objectives existed.
   objective      PortfolioObjective?
+  /// When this portfolio last changed environment. Performance is measured
+  /// from here, because everything before it happened under other prices.
+  environmentChangedAt DateTime? @map("environment_changed_at")
   tradingState   TradingState       @default(ACTIVE) @map("trading_state")
   isActive       Boolean            @default(true) @map("is_active")
   haltedReason   String?            @map("halted_reason")
