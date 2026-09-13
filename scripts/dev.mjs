@@ -16,7 +16,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFor, npmCommand } from './env-tools.mjs';
+import { loadEnvFor, npmCommand, spawnOptions } from './env-tools.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const env = loadEnvFor(root, process.env);
@@ -34,7 +34,7 @@ function stopAll(code) {
 }
 
 function start(name, args) {
-  const child = spawn(npmCommand(), args, { cwd: root, env, stdio: 'inherit' });
+  const child = spawn(npmCommand(), args, spawnOptions({ cwd: root, env, stdio: 'inherit' }));
   child.on('error', (error) => {
     console.error(`\n${name} could not start: ${error.message}`);
     stopAll(1);

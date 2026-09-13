@@ -14,6 +14,23 @@ export function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
+/**
+ * Spawn options that can actually launch npm on Windows.
+ *
+ * Since Node 20.12 (the fix for CVE-2024-27980) spawning a `.cmd` or `.bat`
+ * without a shell is refused outright, with `EINVAL` — an error that names
+ * nothing useful and reads like a bad argument. A shell is required, and only
+ * on Windows.
+ *
+ * Every argument these scripts pass is a literal written in this repository —
+ * no user input reaches a command line — so the shell adds no injection
+ * surface here. Anything read from a person or a file travels through the
+ * environment instead, never through argv.
+ */
+export function spawnOptions(base = {}) {
+  return process.platform === 'win32' ? { ...base, shell: true } : base;
+}
+
 /** A deliberately small parser: KEY=VALUE, `export` prefix, quotes, comments. */
 export function parseEnvFile(contents) {
   const values = {};

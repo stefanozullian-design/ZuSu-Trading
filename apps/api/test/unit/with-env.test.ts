@@ -48,7 +48,7 @@ describe('envWithFile', () => {
   });
 });
 
-describe('npmCommand', () => {
+describe('launching npm', () => {
   it('spells npm the way the current platform can spawn it', async () => {
     const { npmCommand } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
       npmCommand: () => string;
@@ -56,6 +56,17 @@ describe('npmCommand', () => {
     // `spawn('npm')` without a shell is ENOENT on Windows, which reads like npm
     // is missing rather than merely spelled differently.
     expect(npmCommand()).toBe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
+  });
+
+  it('asks for a shell only on Windows, and keeps the caller’s options', async () => {
+    const { spawnOptions } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
+      spawnOptions: (base?: Record<string, unknown>) => Record<string, unknown>;
+    };
+    // Since Node 20.12, spawning a .cmd without a shell fails with EINVAL —
+    // an error that names nothing and reads like a bad argument.
+    const options = spawnOptions({ cwd: '/somewhere', stdio: 'inherit' });
+    expect(options.cwd).toBe('/somewhere');
+    expect(options.shell).toBe(process.platform === 'win32' ? true : undefined);
   });
 });
 

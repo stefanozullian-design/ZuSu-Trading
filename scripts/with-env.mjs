@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFor, npmCommand } from './env-tools.mjs';
+import { loadEnvFor, npmCommand, spawnOptions } from './env-tools.mjs';
 
 export { parseEnvFile, envWithFile } from './env-tools.mjs';
 
@@ -25,11 +25,11 @@ function main() {
   }
 
   const resolved = command === 'npm' ? npmCommand() : command;
-  const result = spawnSync(resolved, args, {
-    cwd: root,
-    env: loadEnvFor(root, process.env),
-    stdio: 'inherit',
-  });
+  const result = spawnSync(
+    resolved,
+    args,
+    spawnOptions({ cwd: root, env: loadEnvFor(root, process.env), stdio: 'inherit' }),
+  );
 
   if (result.error) {
     console.error(`could not run ${resolved}: ${result.error.message}`);
