@@ -59,6 +59,12 @@ export function RiskMonitor({ portfolioId }: { portfolioId: string }) {
                             blocker.severity === 'BLOCKING' ? 'text-red-300' : 'text-amber-300'
                           }
                         >
+                          {/* Named, not just coloured: which of these is
+                              actually stopping a trade is the whole question,
+                              and a hue cannot answer it for everyone. */}
+                          <span className="font-medium uppercase tracking-wider">
+                            {blocker.severity === 'BLOCKING' ? 'blocking' : 'warning'}
+                          </span>{' '}
                           {blocker.message}
                         </span>
                       </li>

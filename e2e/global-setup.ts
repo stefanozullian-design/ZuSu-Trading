@@ -58,34 +58,51 @@ function run(command: string, args: string[]): void {
 async function openTheSessionForThisRun(): Promise<void> {
   const db = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
   try {
-    const now = new Date();
-    const date = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
-    );
-    const open = new Date(date.getTime());
-    const close = new Date(date.getTime() + 86_400_000 - 1);
+    const now = Date.now();
 
-    for (const marketCode of ['XNYS', 'CRYPTO']) {
-      await db.marketCalendarDay.upsert({
-        where: { marketCode_date: { marketCode, date } },
-        update: {
-          isTradingDay: true,
-          preMarketOpen: open,
-          regularOpen: open,
-          regularClose: close,
-          afterHoursClose: close,
-          holidayName: null,
-        },
-        create: {
-          marketCode,
-          date,
-          isTradingDay: true,
-          preMarketOpen: open,
-          regularOpen: open,
-          regularClose: close,
-          afterHoursClose: close,
-        },
-      });
+    // Yesterday, today and tomorrow in UTC.
+    //
+    // Calendar rows are keyed by the *market-local* date, and XNYS is in New
+    // York. So for a few hours either side of midnight UTC the local date and
+    // the UTC date are different days, and opening only the UTC one opens a
+    // day nobody looks up — which is exactly how this fixture failed at
+    // 01:00 UTC after passing all afternoon. Covering the window removes the
+    // timezone arithmetic from the question entirely.
+    for (const offset of [-1, 0, 1]) {
+      const at = new Date(now + offset * 86_400_000);
+      const date = new Date(
+        Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), 0, 0, 0, 0),
+      );
+      // The window is instants, while the row is keyed by the market-local
+      // date — so a row for "today in New York" must stay open across the UTC
+      // midnight that falls in the middle of it. Rather than do that
+      // arithmetic, every row opens a window wide enough to contain this run
+      // whichever row the calendar decides to read.
+      const open = new Date(now - 2 * 86_400_000);
+      const close = new Date(now + 2 * 86_400_000);
+
+      for (const marketCode of ['XNYS', 'CRYPTO']) {
+        await db.marketCalendarDay.upsert({
+          where: { marketCode_date: { marketCode, date } },
+          update: {
+            isTradingDay: true,
+            preMarketOpen: open,
+            regularOpen: open,
+            regularClose: close,
+            afterHoursClose: close,
+            holidayName: null,
+          },
+          create: {
+            marketCode,
+            date,
+            isTradingDay: true,
+            preMarketOpen: open,
+            regularOpen: open,
+            regularClose: close,
+            afterHoursClose: close,
+          },
+        });
+      }
     }
   } finally {
     await db.$disconnect();

@@ -602,6 +602,12 @@ function GateBanner({ portfolioId }: { portfolioId: string }) {
 
   if (!gate || gate.allowed) return null;
 
+  // Only the blocking ones stop a submission. Listing a warning beside them
+  // under "nothing can be submitted" would make a Redis that nobody installed
+  // look like the reason a trade did not go through.
+  const blocking = gate.blockers.filter((blocker) => blocker.severity === 'BLOCKING');
+  const warnings = gate.blockers.filter((blocker) => blocker.severity !== 'BLOCKING');
+
   return (
     <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-300">
       <p className="flex items-center gap-1.5 font-medium">
@@ -609,7 +615,7 @@ function GateBanner({ portfolioId }: { portfolioId: string }) {
         Nothing can be submitted right now
       </p>
       <ul className="mt-1 space-y-0.5 text-[11px]">
-        {gate.blockers.map((blocker) => (
+        {blocking.map((blocker) => (
           <li key={blocker.code + blocker.message}>· {blocker.message}</li>
         ))}
       </ul>
@@ -617,6 +623,12 @@ function GateBanner({ portfolioId }: { portfolioId: string }) {
         The recommendations below stay where they are. Approving one now would be refused by the
         same check, so the refusal is shown here instead of after the click.
       </p>
+      {warnings.length > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Also noted, but not what is stopping anything:{' '}
+          {warnings.map((warning) => warning.message).join(' ')}
+        </p>
+      )}
     </div>
   );
 }
