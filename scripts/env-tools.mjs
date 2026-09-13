@@ -15,20 +15,26 @@ export function npmCommand() {
 }
 
 /**
- * Spawn options that can actually launch npm on Windows.
+ * A shell command line, and the options to run it.
  *
- * Since Node 20.12 (the fix for CVE-2024-27980) spawning a `.cmd` or `.bat`
- * without a shell is refused outright, with `EINVAL` — an error that names
- * nothing useful and reads like a bad argument. A shell is required, and only
- * on Windows.
+ * Windows needs a shell: since Node 20.12 (the fix for CVE-2024-27980)
+ * spawning a `.cmd` or `.bat` without one is refused outright with `EINVAL`,
+ * an error that names nothing useful. But passing an *args array* alongside
+ * `shell: true` makes Node print a DeprecationWarning about unescaped
+ * arguments on every single start — which reads like a security problem to
+ * anyone who is not a Node developer, on a tool whose whole point is not
+ * alarming people without cause. One pre-joined command line avoids both.
  *
- * Every argument these scripts pass is a literal written in this repository —
- * no user input reaches a command line — so the shell adds no injection
- * surface here. Anything read from a person or a file travels through the
- * environment instead, never through argv.
+ * Every part of that line is a literal written in this repository. Nothing
+ * read from a person or a file ever reaches a command line; that travels
+ * through the environment instead.
  */
+export function npmCommandLine(args) {
+  return [npmCommand(), ...args].join(' ');
+}
+
 export function spawnOptions(base = {}) {
-  return process.platform === 'win32' ? { ...base, shell: true } : base;
+  return { ...base, shell: true };
 }
 
 /** A deliberately small parser: KEY=VALUE, `export` prefix, quotes, comments. */

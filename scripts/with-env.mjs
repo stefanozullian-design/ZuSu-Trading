@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFor, npmCommand, spawnOptions } from './env-tools.mjs';
+import { loadEnvFor, npmCommandLine, spawnOptions } from './env-tools.mjs';
 
 export { parseEnvFile, envWithFile } from './env-tools.mjs';
 
@@ -24,15 +24,14 @@ function main() {
     process.exit(2);
   }
 
-  const resolved = command === 'npm' ? npmCommand() : command;
+  const line = command === 'npm' ? npmCommandLine(args) : [command, ...args].join(' ');
   const result = spawnSync(
-    resolved,
-    args,
+    line,
     spawnOptions({ cwd: root, env: loadEnvFor(root, process.env), stdio: 'inherit' }),
   );
 
   if (result.error) {
-    console.error(`could not run ${resolved}: ${result.error.message}`);
+    console.error(`could not run ${line}: ${result.error.message}`);
     process.exit(1);
   }
   process.exit(result.status ?? 1);

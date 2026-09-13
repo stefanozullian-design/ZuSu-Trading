@@ -21,14 +21,14 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { npmCommand, spawnOptions } from './env-tools.mjs';
+import { npmCommandLine, spawnOptions } from './env-tools.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const envPath = join(root, '.env');
 
 function run(label, args) {
   process.stdout.write(`\n▶ ${label}\n`);
-  const result = spawnSync(npmCommand(), args, spawnOptions({ cwd: root, stdio: 'inherit' }));
+  const result = spawnSync(npmCommandLine(args), spawnOptions({ cwd: root, stdio: 'inherit' }));
   if (result.error) throw new Error(`could not run npm: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`${label} failed. The output above says why; nothing after this ran.`);

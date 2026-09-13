@@ -16,7 +16,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFor, npmCommand, spawnOptions } from './env-tools.mjs';
+import { loadEnvFor, npmCommandLine, spawnOptions } from './env-tools.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const env = loadEnvFor(root, process.env);
@@ -34,11 +34,16 @@ function stopAll(code) {
 }
 
 function start(name, args) {
-  const child = spawn(npmCommand(), args, spawnOptions({ cwd: root, env, stdio: 'inherit' }));
+  const child = spawn(npmCommandLine(args), spawnOptions({ cwd: root, env, stdio: 'inherit' }));
   child.on('error', (error) => {
     console.error(`\n${name} could not start: ${error.message}`);
     stopAll(1);
   });
+  // A half that dies during start-up is the common case — a bad .env, a
+  // database that is not running — and leaving the other half up means a page
+  // that loads with nothing behind it. Worse than both being down, because it
+  // looks like it worked.
+
   child.on('exit', (code) => {
     if (!stopping) {
       console.error(`\n${name} exited (${String(code)}); stopping the other half too.`);

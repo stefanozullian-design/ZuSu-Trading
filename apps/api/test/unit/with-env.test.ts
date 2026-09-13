@@ -58,7 +58,7 @@ describe('launching npm', () => {
     expect(npmCommand()).toBe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
   });
 
-  it('asks for a shell only on Windows, and keeps the caller’s options', async () => {
+  it('runs through a shell, keeping the caller’s options', async () => {
     const { spawnOptions } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
       spawnOptions: (base?: Record<string, unknown>) => Record<string, unknown>;
     };
@@ -66,7 +66,18 @@ describe('launching npm', () => {
     // an error that names nothing and reads like a bad argument.
     const options = spawnOptions({ cwd: '/somewhere', stdio: 'inherit' });
     expect(options.cwd).toBe('/somewhere');
-    expect(options.shell).toBe(process.platform === 'win32' ? true : undefined);
+    expect(options.shell).toBe(true);
+  });
+
+  it('builds one command line rather than an args array', async () => {
+    const { npmCommandLine } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
+      npmCommandLine: (args: string[]) => string;
+    };
+    // An args array alongside shell:true makes Node print a DeprecationWarning
+    // about unescaped arguments on every start, which reads like a security
+    // problem to anyone who is not a Node developer.
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    expect(npmCommandLine(['run', 'dev', '-w', '@zusu/api'])).toBe(`${npm} run dev -w @zusu/api`);
   });
 });
 
