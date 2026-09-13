@@ -57,6 +57,28 @@ npm run backfill:demo           # calendars, ~13,700 simulated candles, example 
 
 </details>
 
+### Real market data
+
+With a provider key in `.env` (`MARKET_DATA_PROVIDER=MASSIVE` and
+`MASSIVE_API_KEY`), real bars are fetched with:
+
+```bash
+npm run sync:market                      # a year of daily bars, every symbol
+npm run sync:market -- --days 30         # a shorter window
+npm run sync:market -- --symbols AAPL,MSFT
+npm run sync:market -- --timeframe 5m    # intraday, if the plan provides it
+```
+
+It paces itself to one request every twelve seconds, because a free plan allows
+a handful a minute and a rate-limit refusal costs more than waiting does. Real
+bars go through the same quality inspection as simulated ones and are tagged
+with the provider that produced them, so nothing downstream can confuse the two.
+The scheduler repeats a short sync every six hours; with no provider configured
+it reports that and fetches nothing rather than generating anything.
+
+An end-of-day plan returns nothing at all for an intraday timeframe, and the
+script says so rather than leaving you looking for a bug.
+
 `backfill:demo` is what makes the **Market** page show something. It generates
 bars from the deterministic simulator and pushes them through the real quality
 layer, so inspection, storage and the indicator engine all run the path they

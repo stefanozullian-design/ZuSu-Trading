@@ -108,6 +108,11 @@ export class Scheduler {
       intervalMs: MINUTE,
       run: () => this.runAutomation(),
     });
+    this.define({
+      name: 'market-data-sync',
+      intervalMs: 6 * HOUR,
+      run: () => this.syncMarketData(),
+    });
 
     if (this.options.autoStart) this.start();
   }
@@ -309,6 +314,27 @@ export class Scheduler {
       `${String(runs.length)} automatic configurations: ${String(placed)} orders placed, ` +
       `${String(deferred)} recommendations left for a person`
     );
+  }
+
+  /**
+   * Keeps stored bars current from the configured provider.
+   *
+   * Does nothing at all when no provider is configured, which is the shipped
+   * state — it reports that rather than generating anything. A deployment with
+   * no feed should have stale data and know it, not fresh data that was
+   * invented.
+   *
+   * Paced to the provider's rate limit, and run rarely: a daily-bar feed has
+   * nothing new to say between closes, and hammering a free plan earns a
+   * refusal that costs more than waiting.
+   */
+  private async syncMarketData(): Promise<string> {
+    if (!this.container.marketData.tryResolve()) {
+      return 'no market-data provider is configured; nothing was fetched or invented';
+    }
+
+    const run = await this.container.marketDataSync.sync({ days: 5 });
+    return run.summary;
   }
 
   private async runBreakers(): Promise<string> {

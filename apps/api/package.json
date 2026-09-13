@@ -15,6 +15,7 @@
     "db:reset": "prisma migrate reset --force",
     "seed": "tsx prisma/seed.ts",
     "backfill:demo": "tsx scripts/backfill-demo.ts",
+    "sync:market": "tsx scripts/sync-market-data.ts",
     "test": "vitest run",
     "test:unit": "vitest run src/",
     "test:integration": "vitest run test/integration/",
