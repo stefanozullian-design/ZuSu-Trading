@@ -41,17 +41,37 @@ function npm(label, args, env) {
     throw new Error(`${label} failed.\n\n${String(result.stderr ?? '').trim()}`);
 }
 
+/**
+ * Files nobody edits by hand, which tools rewrite as a side effect.
+ *
+ * `npm install` rewrites the lockfile on some machines — a different npm
+ * version, a different set of platform-specific optional packages — and it is
+ * generated from package.json rather than authored. Counted as a local edit it
+ * created a deadlock nobody could escape: the update ran npm install, npm
+ * rewrote the lockfile, and the next update refused because of a file the
+ * previous update had modified. Forever.
+ */
+const GENERATED = ['package-lock.json'];
+
+/** Splits a porcelain listing into what a person wrote and what a tool wrote. */
+export function classifyEdits(porcelain) {
+  const files = porcelain
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    // Untracked files are not in the way of a pull; modified tracked ones are.
+    .filter((line) => !line.startsWith('??'))
+    .map((line) => line.slice(2).trim());
+
+  return {
+    generated: files.filter((file) => GENERATED.includes(file)),
+    authored: files.filter((file) => !GENERATED.includes(file)),
+  };
+}
+
 /** Files the person changed themselves, which a pull would overwrite. */
 export function localEdits(porcelain) {
-  return (
-    porcelain
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      // Untracked files are not in the way of a pull; modified tracked ones are.
-      .filter((line) => !line.startsWith('??'))
-      .map((line) => line.slice(2).trim())
-  );
+  return classifyEdits(porcelain).authored;
 }
 
 function main() {
@@ -83,7 +103,15 @@ function main() {
   }
   console.log(`  ${behind.out} new change(s) to bring in.\n`);
 
-  const edits = localEdits(git(['status', '--porcelain']).out);
+  const { generated, authored: edits } = classifyEdits(git(['status', '--porcelain']).out);
+
+  if (generated.length > 0) {
+    // Said out loud rather than done quietly. Restoring a file is discarding
+    // something, and even a generated file is worth one line of explanation.
+    console.log(`  Restoring ${generated.join(', ')} — npm rewrites it, nobody edits it.\n`);
+    git(['checkout', '--', ...generated]);
+  }
+
   if (edits.length > 0) {
     // Never discarded silently. A pull that throws away someone's edit is a
     // convenience that costs them work they cannot get back.
@@ -108,6 +136,11 @@ function main() {
   // this. An update carrying only a migration would then leave the code that
   // reads the database a version behind it.
   npm('Matching the database tools to it…', ['run', 'db:generate'], env);
+
+  // And again afterwards: the install that just ran may have rewritten it,
+  // which would leave the next update refusing over this one's side effect.
+  const after = classifyEdits(git(['status', '--porcelain']).out);
+  if (after.generated.length > 0) git(['checkout', '--', ...after.generated]);
 
   console.log('\n  Done. Start ZuSu the usual way — the icon on your desktop.\n');
 }

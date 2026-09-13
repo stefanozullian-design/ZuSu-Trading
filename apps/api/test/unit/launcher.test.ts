@@ -24,6 +24,7 @@ const tools = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
 
 const updater = (await import(join(repoRoot, 'scripts/update.mjs'))) as {
   localEdits: (porcelain: string) => string[];
+  classifyEdits: (porcelain: string) => { generated: string[]; authored: string[] };
 };
 
 const launcher = (await import(join(repoRoot, 'scripts/start.mjs'))) as {
@@ -197,5 +198,36 @@ describe('an already-running ZuSu', () => {
     ]) {
       expect(launcher.staleRunning(a, b), `${String(a)} vs ${String(b)}`).toBe(false);
     }
+  });
+});
+
+/**
+ * The lockfile deadlock.
+ *
+ * `npm install` rewrites package-lock.json on some machines, and the updater
+ * runs npm install. Counted as a local edit, that made the update refuse
+ * because of a file the *previous* update had modified — a loop with no way
+ * out, and one that reported itself as the person's fault.
+ */
+describe('generated files', () => {
+  it('does not count a lockfile npm rewrote as something a person edited', () => {
+    const { generated, authored } = updater.classifyEdits(' M package-lock.json');
+
+    expect(generated).toEqual(['package-lock.json']);
+    expect(authored).toEqual([]);
+  });
+
+  it('still blocks on a file somebody actually wrote', () => {
+    const { generated, authored } = updater.classifyEdits(
+      ' M package-lock.json\n M apps/web/src/App.tsx',
+    );
+
+    // Restoring a generated file is safe; discarding somebody's work is not,
+    // and mixing the two would make the safe case an excuse for the other.
+    expect(generated).toEqual(['package-lock.json']);
+    expect(authored).toEqual(['apps/web/src/App.tsx']);
+    expect(updater.localEdits(' M package-lock.json\n M apps/web/src/App.tsx')).toEqual([
+      'apps/web/src/App.tsx',
+    ]);
   });
 });
