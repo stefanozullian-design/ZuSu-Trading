@@ -325,7 +325,10 @@ describe('a live definition cannot change silently', () => {
         where: { id },
         data: { definition: { tampered: true } },
       }),
-    ).rejects.toThrow(/frozen/);
+      // The trigger's own words. This asserted /frozen/ and passed for weeks
+      // against a database whose trigger predated the message — a fresh
+      // install would have failed it on the first run.
+    ).rejects.toThrow(/is immutable; create a new version instead/);
   });
 
   it('permits a stage change on a frozen version, since that is not the definition', async () => {

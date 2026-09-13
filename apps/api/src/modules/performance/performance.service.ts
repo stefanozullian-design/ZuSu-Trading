@@ -177,6 +177,10 @@ export class PerformanceService {
     }
 
     const occurredAt = input.occurredAt ?? new Date();
+    // Deposits are positive, withdrawals negative. TRANSFER_IN is deliberately
+    // not accepted here: it represents shares arriving rather than cash, and
+    // this method moves the cash balance. Only the position import writes one,
+    // inside the same transaction that creates the shares it accounts for.
     const signed = input.type === 'DEPOSIT' ? amount : amount.negated();
     const cash = dec(portfolio.cashBalance.toString());
     if (input.type === 'WITHDRAWAL' && amount.greaterThan(cash)) {

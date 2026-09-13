@@ -161,6 +161,64 @@ test.describe('the market being shut', () => {
   });
 });
 
+test.describe('the positions list', () => {
+  test('shows the book after arriving from the dashboard', async ({ page }) => {
+    // The route everybody takes, and the one that used to break it: the
+    // dashboard's own positions table shared a cache key with this list while
+    // fetching a different shape, so this rendered "No positions" over a book
+    // that was not empty.
+    await signIn(page, 'manager');
+    await expect(page.getByRole('heading', { name: /open positions/i })).toBeVisible();
+
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
+    await expect(page.getByText('Positions and their tax lots')).toBeVisible();
+
+    await expect(page.getByText('No positions.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /AAPL/ }).first()).toBeVisible();
+  });
+});
+
+test.describe('shares already owned', () => {
+  test('records a holding without spending cash or crediting a strategy', async ({ page }) => {
+    await signIn(page, 'manager');
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
+
+    await page.getByRole('button', { name: /record a holding/i }).click();
+    await page.getByLabel('Symbol to import').fill('TSLA');
+    await page.getByLabel('Shares held').fill('12');
+    await page.getByLabel('Average price paid').fill('195.50');
+    await page.getByLabel('Date acquired').fill('2026-04-01');
+
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/positions/import')),
+      page.getByRole('button', { name: /record it/i }).click(),
+    ]);
+
+    // The confirmation states what it did to the books, rather than quietly
+    // doing it: value in, but never counted as performance.
+    await expect(page.getByText(/recorded as a transfer in/i)).toBeVisible();
+    await expect(page.getByText(/no strategy is credited/i)).toBeVisible();
+  });
+
+  test('refuses a symbol it could never price', async ({ page }) => {
+    await signIn(page, 'manager');
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
+
+    await page.getByRole('button', { name: /record a holding/i }).click();
+    await page.getByLabel('Symbol to import').fill('ZZZZ');
+    await page.getByLabel('Shares held').fill('5');
+    await page.getByLabel('Average price paid').fill('10');
+    await page.getByLabel('Date acquired').fill('2026-04-01');
+
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/positions/import')),
+      page.getByRole('button', { name: /record it/i }).click(),
+    ]);
+
+    await expect(page.getByText(/not an instrument this platform knows/i)).toBeVisible();
+  });
+});
+
 test.describe('performance', () => {
   test('shows both return measures and the conventions behind them', async ({ page }) => {
     await signIn(page, 'manager');

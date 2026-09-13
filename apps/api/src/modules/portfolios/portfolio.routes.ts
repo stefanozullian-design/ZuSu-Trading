@@ -13,6 +13,29 @@ import { principalOf } from '../../plugins/auth.js';
 
 const idParams = z.object({ id: z.string().uuid() });
 
+const importPositionSchema = z.object({
+  symbol: z.string().trim().min(1).max(12),
+  quantity: z.string().refine((v) => Number(v) > 0, { message: 'must be a positive number' }),
+  averageEntryPrice: z
+    .string()
+    .refine((v) => Number(v) > 0, { message: 'must be a positive number' }),
+  acquiredAt: z.string().datetime(),
+  note: z.string().max(500).optional(),
+});
+
+const importedPositionSchema = z.object({
+  id: z.string(),
+  portfolioId: z.string(),
+  symbol: z.string(),
+  quantity: z.string(),
+  averageEntryPrice: z.string(),
+  costBasis: z.string(),
+  acquiredAt: z.string(),
+  origin: z.literal('IMPORTED'),
+  cashFlowId: z.string(),
+  detail: z.string(),
+});
+
 export async function registerPortfolioRoutes(
   app: FastifyInstance,
   container: AppContainer,
@@ -98,5 +121,62 @@ export async function registerPortfolioRoutes(
     },
     async (request, reply) =>
       reply.send(await container.portfolios.positions(principalOf(request), request.params.id)),
+  );
+
+  typed.post(
+    '/:id/positions/import',
+    {
+      preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'Record shares already held before this platform was watching',
+        description:
+          'Creates a position marked IMPORTED, with a tax lot so it can later be sold, and a ' +
+          'TRANSFER_IN cash flow for its cost so the arrival is never read as a gain. It moves ' +
+          'no cash, creates no order, and credits no strategy.',
+        params: idParams,
+        body: importPositionSchema,
+        response: { 201: importedPositionSchema },
+      },
+    },
+    async (request, reply) => {
+      const imported = await container.positionImport.importPosition(principalOf(request), {
+        portfolioId: request.params.id,
+        symbol: request.body.symbol,
+        quantity: request.body.quantity,
+        averageEntryPrice: request.body.averageEntryPrice,
+        acquiredAt: new Date(request.body.acquiredAt),
+        ...(request.body.note !== undefined && { note: request.body.note }),
+      });
+      return reply.status(201).send(imported);
+    },
+  );
+
+  typed.get(
+    '/:id/positions/imported',
+    {
+      preHandler: app.requirePermission(Permission.POSITION_READ),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'Positions declared as already held, newest acquisition first',
+        params: idParams,
+        response: {
+          200: z.array(
+            z.object({
+              id: z.string(),
+              symbol: z.string(),
+              status: z.string(),
+              quantity: z.string(),
+              averageEntryPrice: z.string(),
+              acquiredAt: z.string(),
+            }),
+          ),
+        },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await container.positionImport.listImported(principalOf(request), request.params.id),
+      ),
   );
 }

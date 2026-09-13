@@ -211,6 +211,8 @@ export const AuditAction = {
   STRATEGY_VERSION_CREATED: 'STRATEGY_VERSION_CREATED',
   STRATEGY_ENABLED: 'STRATEGY_ENABLED',
   STRATEGY_DISABLED: 'STRATEGY_DISABLED',
+  /** A holding declared as already owned, rather than opened by a fill. */
+  POSITION_IMPORTED: 'POSITION_IMPORTED',
   STRATEGY_PROMOTED: 'STRATEGY_PROMOTED',
   /** Automation lowered. Its own action, so "who turned it down" is searchable. */
   STRATEGY_DEMOTED: 'STRATEGY_DEMOTED',

@@ -146,14 +146,25 @@ export class ReconciliationService {
 
     for (const [symbol, ours] of oursBySymbol) {
       if (theirsBySymbol.has(symbol)) continue;
+
+      // An imported position is still reported. It was declared by a person
+      // rather than traded, so the broker not holding it is *explainable* — but
+      // "explainable" is not "fine", and the one thing reconciliation must
+      // never do is decide for the reader which differences deserve their
+      // attention. What provenance buys is a better sentence, not silence.
+      const imported = ours.origin === 'IMPORTED';
       differences.push({
         kind: 'POSITION_MISSING_AT_BROKER',
         symbol,
         ours: ours.quantity.toString(),
         theirs: null,
-        detail:
-          `This platform holds ${ours.quantity.toString()} ${symbol} that the broker does not ` +
-          'report. This is the worse direction: the platform believes it is in a trade it is not.',
+        detail: imported
+          ? `This platform holds ${ours.quantity.toString()} ${symbol} that the broker does not ` +
+            `report. It was imported as already held on ` +
+            `${ours.openedAt.toISOString().slice(0, 10)} rather than bought here, so no order ` +
+            'explains it. Either the shares are at another broker, or the declaration was wrong.'
+          : `This platform holds ${ours.quantity.toString()} ${symbol} that the broker does not ` +
+            'report. This is the worse direction: the platform believes it is in a trade it is not.',
       });
     }
 

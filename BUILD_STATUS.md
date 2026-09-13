@@ -504,6 +504,39 @@ flatters the result — the safe direction for a gate to be wrong in.
 **What ships on:** every seeded configuration sits at MANUAL_APPROVAL and is
 disabled. A fresh install cannot trade before its owner has read a screen.
 
+### Opening positions — shares held before the platform existed
+
+| Step                  | State                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1. Import             | Done — `POST /api/portfolios/:id/positions/import`, and a form on the Trading page.                     |
+| 2. Provenance         | Done — `PositionOrigin.IMPORTED`, stored, never inferred from the absence of an order.                  |
+| 3. Return correctness | Done — a `TRANSFER_IN` cash flow for the cost, so a time-weighted return reads it as arrival, not gain. |
+| 4. Tax lot            | Done — one lot opened, so the shares can actually be sold afterwards.                                   |
+| 5. Reconciliation     | Done — an imported position is _explained_ in the difference, never suppressed from it.                 |
+
+**Importing shares cannot improve anybody's track record.** Equity rising is
+read as performance by every return calculation, so an import that simply
+created shares would hand the owner a gain for remembering what they already
+owned. The value arrives as a `TRANSFER_IN` cash flow instead, which the
+time-weighted return divides out exactly as it divides out a deposit. Two tests
+pin it: equity rises by the cost basis, and the return across the import is
+zero.
+
+**It opens a tax lot, because otherwise it would work until the first sale.**
+Selling consumes lots first-in-first-out, and the position book refuses to trade
+a position whose lots do not account for its shares. An import without a lot
+passes every test that does not sell.
+
+**Reconciliation explains it rather than going quiet.** The original plan was to
+mark imported positions so the reconciler would not flag them. That was wrong:
+the broker genuinely may not hold what a person said they hold, and that is
+precisely the finding reconciliation exists to surface. Provenance buys a better
+sentence — "imported as already held on 2026-03-02 rather than bought here, so
+no order explains it" — never silence.
+
+**It moves no cash and creates no order**, so no strategy is credited with a
+holding it did not choose.
+
 ## Blocked
 
 | Item                            | Blocked on                                                                                                                                                                                                                                                                           |

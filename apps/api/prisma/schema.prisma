@@ -221,6 +221,17 @@ enum NotificationStatus {
 enum CashFlowType {
   DEPOSIT
   WITHDRAWAL
+  /// Shares transferred in, not cash. Recorded so returns are not flattered by
+  /// an opening balance; never created by hand, only by a position import.
+  TRANSFER_IN
+}
+
+/// How a position came to exist (§44).
+enum PositionOrigin {
+  /// Opened by a fill this platform can point to. The normal case.
+  TRADED
+  /// Declared by a person as already held before this platform was watching.
+  IMPORTED
 }
 
 enum FeeType {
@@ -269,35 +280,35 @@ enum ComplianceDocumentType {
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   email         String    @unique
-  displayName   String @map("display_name")
+  displayName   String    @map("display_name")
   /// scrypt hash in `scrypt$N$r$p$salt$hash` form. Never a plaintext password.
-  passwordHash  String @map("password_hash")
+  passwordHash  String    @map("password_hash")
   role          UserRole
   isActive      Boolean   @default(true) @map("is_active")
   /// Encrypted TOTP secret; null until the user enrols.
-  mfaSecret     String? @map("mfa_secret")
+  mfaSecret     String?   @map("mfa_secret")
   mfaEnabled    Boolean   @default(false) @map("mfa_enabled")
   mfaEnrolledAt DateTime? @map("mfa_enrolled_at")
   lastLoginAt   DateTime? @map("last_login_at")
   failedLogins  Int       @default(0) @map("failed_logins")
   lockedUntil   DateTime? @map("locked_until")
-  clientId      String?   @db.Uuid @map("client_id")
+  clientId      String?   @map("client_id") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  client            Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  refreshTokens     RefreshToken[]
-  portfolioAccess   PortfolioAccess[] @relation("PortfolioAccessUser")
-  grantedAccess     PortfolioAccess[] @relation("PortfolioAccessGrantedBy")
-  auditLogs         AuditLog[]
-  notifications     Notification[]
-  journalEntries    TradeJournalEntry[]
-  approvedSignals   Signal[]            @relation("SignalApprover")
-  authoredVersions  StrategyVersion[]   @relation("StrategyVersionAuthor")
-  approvedVersions  StrategyVersion[]   @relation("StrategyVersionApprover")
-  backtests         Backtest[]
-  riskLimitChanges  RiskLimit[]
-  scanDefinitions   ScanDefinition[]
+  client           Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  refreshTokens    RefreshToken[]
+  portfolioAccess  PortfolioAccess[]   @relation("PortfolioAccessUser")
+  grantedAccess    PortfolioAccess[]   @relation("PortfolioAccessGrantedBy")
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  journalEntries   TradeJournalEntry[]
+  approvedSignals  Signal[]            @relation("SignalApprover")
+  authoredVersions StrategyVersion[]   @relation("StrategyVersionAuthor")
+  approvedVersions StrategyVersion[]   @relation("StrategyVersionApprover")
+  backtests        Backtest[]
+  riskLimitChanges RiskLimit[]
+  scanDefinitions  ScanDefinition[]
 
   @@index([role])
   @@index([clientId])
@@ -305,19 +316,19 @@ model User {
 }
 
 model RefreshToken {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid @map("user_id")
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
   /// SHA-256 of the opaque token. The token itself is never stored.
-  tokenHash   String    @unique @map("token_hash")
+  tokenHash    String    @unique @map("token_hash")
   /// Rotation family — reuse of a revoked member revokes the whole family.
-  familyId    String    @db.Uuid @map("family_id")
-  issuedAt    DateTime  @default(now()) @map("issued_at")
-  expiresAt   DateTime @map("expires_at")
-  revokedAt   DateTime? @map("revoked_at")
-  revokedBy   String? @map("revoked_by")
-  replacedById String?  @db.Uuid @map("replaced_by_id")
-  ip          String?
-  userAgent   String? @map("user_agent")
+  familyId     String    @map("family_id") @db.Uuid
+  issuedAt     DateTime  @default(now()) @map("issued_at")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  revokedBy    String?   @map("revoked_by")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  ip           String?
+  userAgent    String?   @map("user_agent")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -331,7 +342,7 @@ model Client {
   id           String   @id @default(uuid()) @db.Uuid
   name         String
   externalRef  String?  @unique @map("external_ref")
-  contactEmail String? @map("contact_email")
+  contactEmail String?  @map("contact_email")
   notes        String?
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -350,8 +361,8 @@ model Client {
 /// Relational many-to-many between clients and portfolios (§59).
 model ClientPortfolio {
   id          String   @id @default(uuid()) @db.Uuid
-  clientId    String   @db.Uuid @map("client_id")
-  portfolioId String   @db.Uuid @map("portfolio_id")
+  clientId    String   @map("client_id") @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
   /// Owner clients see everything; beneficiaries get read-only reporting.
   isPrimary   Boolean  @default(false) @map("is_primary")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -367,10 +378,10 @@ model ClientPortfolio {
 /// Explicit per-user grant on a portfolio. Absence of a row means no access.
 model PortfolioAccess {
   id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid @map("user_id")
-  portfolioId String   @db.Uuid @map("portfolio_id")
+  userId      String   @map("user_id") @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
   canTrade    Boolean  @default(false) @map("can_trade")
-  grantedById String?  @db.Uuid @map("granted_by_id")
+  grantedById String?  @map("granted_by_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at")
 
   user      User      @relation("PortfolioAccessUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -387,45 +398,45 @@ model PortfolioAccess {
 // ---------------------------------------------------------------------------
 
 model Portfolio {
-  id              String             @id @default(uuid()) @db.Uuid
-  name            String
+  id             String             @id @default(uuid()) @db.Uuid
+  name           String
   /// A portfolio is permanently bound to one environment. Never mutated.
-  environment     TradingEnvironment
-  clientId        String?            @db.Uuid @map("client_id")
-  baseCurrency    String             @default("USD") @map("base_currency")
-  initialCapital  Decimal            @db.Decimal(24, 8) @map("initial_capital")
-  cashBalance     Decimal            @db.Decimal(24, 8) @map("cash_balance")
-  executionMode   ExecutionMode      @default(MANUAL_APPROVAL) @map("execution_mode")
-  tradingState    TradingState       @default(ACTIVE) @map("trading_state")
-  isActive        Boolean            @default(true) @map("is_active")
-  haltedReason    String? @map("halted_reason")
-  haltedAt        DateTime? @map("halted_at")
-  timezone        String             @default("America/New_York")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  environment    TradingEnvironment
+  clientId       String?            @map("client_id") @db.Uuid
+  baseCurrency   String             @default("USD") @map("base_currency")
+  initialCapital Decimal            @map("initial_capital") @db.Decimal(24, 8)
+  cashBalance    Decimal            @map("cash_balance") @db.Decimal(24, 8)
+  executionMode  ExecutionMode      @default(MANUAL_APPROVAL) @map("execution_mode")
+  tradingState   TradingState       @default(ACTIVE) @map("trading_state")
+  isActive       Boolean            @default(true) @map("is_active")
+  haltedReason   String?            @map("halted_reason")
+  haltedAt       DateTime?          @map("halted_at")
+  timezone       String             @default("America/New_York")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
 
-  client            Client?             @relation("PortfolioOwnerClient", fields: [clientId], references: [id], onDelete: SetNull)
-  clientPortfolios  ClientPortfolio[]
-  access            PortfolioAccess[]
-  brokerAccounts    BrokerAccount[]
-  strategyConfigs   StrategyPortfolioConfig[]
-  signals           Signal[]
-  orders            Order[]
-  executions        Execution[]
-  positions         Position[]
-  riskEvents        RiskEvent[]
-  riskLimits        RiskLimit[]
-  snapshots         PortfolioSnapshot[]
-  performance       PerformanceMetric[]
-  fees              Fee[]
-  cashFlows         CashFlow[]
-  auditLogs         AuditLog[]
-  aiAnalyses        AiAnalysis[]
-  notifications     Notification[]
-  backtests         Backtest[]
-  journalEntries    TradeJournalEntry[]
-  watchlists        Watchlist[]
-  reports           Report[]
+  client           Client?                   @relation("PortfolioOwnerClient", fields: [clientId], references: [id], onDelete: SetNull)
+  clientPortfolios ClientPortfolio[]
+  access           PortfolioAccess[]
+  brokerAccounts   BrokerAccount[]
+  strategyConfigs  StrategyPortfolioConfig[]
+  signals          Signal[]
+  orders           Order[]
+  executions       Execution[]
+  positions        Position[]
+  riskEvents       RiskEvent[]
+  riskLimits       RiskLimit[]
+  snapshots        PortfolioSnapshot[]
+  performance      PerformanceMetric[]
+  fees             Fee[]
+  cashFlows        CashFlow[]
+  auditLogs        AuditLog[]
+  aiAnalyses       AiAnalysis[]
+  notifications    Notification[]
+  backtests        Backtest[]
+  journalEntries   TradeJournalEntry[]
+  watchlists       Watchlist[]
+  reports          Report[]
 
   @@unique([name, environment])
   @@index([environment])
@@ -435,23 +446,23 @@ model Portfolio {
 }
 
 model BrokerAccount {
-  id               String                @id @default(uuid()) @db.Uuid
-  portfolioId      String                @db.Uuid @map("portfolio_id")
+  id                String                @id @default(uuid()) @db.Uuid
+  portfolioId       String                @map("portfolio_id") @db.Uuid
   /// Must equal the portfolio's environment — enforced in code and by tests.
-  environment      TradingEnvironment
-  broker           BrokerKind
-  label            String
+  environment       TradingEnvironment
+  broker            BrokerKind
+  label             String
   /// Broker-side account identifier (not a secret).
-  externalAccountId String? @map("external_account_id")
+  externalAccountId String?               @map("external_account_id")
   /// AES-256-GCM envelope, `v1:<iv>:<tag>:<ciphertext>`. Never leaves the API.
-  credentialsEnc   String? @map("credentials_enc")
-  connectionState  BrokerConnectionState @default(DISCONNECTED) @map("connection_state")
-  lastConnectedAt  DateTime? @map("last_connected_at")
-  lastErrorAt      DateTime? @map("last_error_at")
-  lastError        String? @map("last_error")
-  isActive         Boolean               @default(true) @map("is_active")
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
+  credentialsEnc    String?               @map("credentials_enc")
+  connectionState   BrokerConnectionState @default(DISCONNECTED) @map("connection_state")
+  lastConnectedAt   DateTime?             @map("last_connected_at")
+  lastErrorAt       DateTime?             @map("last_error_at")
+  lastError         String?               @map("last_error")
+  isActive          Boolean               @default(true) @map("is_active")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
 
   portfolio       Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   orders          Order[]
@@ -467,24 +478,24 @@ model BrokerAccount {
 // ---------------------------------------------------------------------------
 
 model Instrument {
-  id            String     @id @default(uuid()) @db.Uuid
-  symbol        String     @unique
-  name          String?
-  assetClass    AssetClass @default(EQUITY) @map("asset_class")
-  exchange      String?
-  sector        String?
-  industry      String?
+  id         String     @id @default(uuid()) @db.Uuid
+  symbol     String     @unique
+  name       String?
+  assetClass AssetClass @default(EQUITY) @map("asset_class")
+  exchange   String?
+  sector     String?
+  industry   String?
   /// Used by the correlation/exposure engine (§21).
-  beta          Decimal?   @db.Decimal(12, 6)
-  isTradable    Boolean    @default(true) @map("is_tradable")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  beta       Decimal?   @db.Decimal(12, 6)
+  isTradable Boolean    @default(true) @map("is_tradable")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
 
-  candles        MarketDataCandle[]
-  quotes         MarketDataQuote[]
-  qualityEvents  MarketDataQualityEvent[]
-  halts          TradingHalt[]
-  watchlistItems WatchlistItem[]
+  candles         MarketDataCandle[]
+  quotes          MarketDataQuote[]
+  qualityEvents   MarketDataQualityEvent[]
+  halts           TradingHalt[]
+  watchlistItems  WatchlistItem[]
   optionContracts OptionContract[]
 
   @@index([sector])
@@ -492,22 +503,22 @@ model Instrument {
 }
 
 model MarketDataQuote {
-  id                String   @id @default(uuid()) @db.Uuid
-  instrumentId      String   @db.Uuid @map("instrument_id")
+  id                String        @id @default(uuid()) @db.Uuid
+  instrumentId      String        @map("instrument_id") @db.Uuid
   symbol            String
   provider          String
-  price             Decimal  @db.Decimal(24, 8)
-  bid               Decimal? @db.Decimal(24, 8)
-  ask               Decimal? @db.Decimal(24, 8)
-  bidSize           Decimal? @db.Decimal(24, 8) @map("bid_size")
-  askSize           Decimal? @db.Decimal(24, 8) @map("ask_size")
-  volume            Decimal? @db.Decimal(24, 8)
+  price             Decimal       @db.Decimal(24, 8)
+  bid               Decimal?      @db.Decimal(24, 8)
+  ask               Decimal?      @db.Decimal(24, 8)
+  bidSize           Decimal?      @map("bid_size") @db.Decimal(24, 8)
+  askSize           Decimal?      @map("ask_size") @db.Decimal(24, 8)
+  volume            Decimal?      @db.Decimal(24, 8)
   /// Timestamp asserted by the provider.
-  sourceTimestamp   DateTime @map("source_timestamp")
+  sourceTimestamp   DateTime      @map("source_timestamp")
   /// Timestamp at which this process received the record.
-  receivedTimestamp DateTime @default(now()) @map("received_timestamp")
+  receivedTimestamp DateTime      @default(now()) @map("received_timestamp")
   marketSession     MarketSession @map("market_session")
-  isStale           Boolean  @default(false) @map("is_stale")
+  isStale           Boolean       @default(false) @map("is_stale")
 
   instrument Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
 
@@ -517,23 +528,23 @@ model MarketDataQuote {
 }
 
 model MarketDataCandle {
-  id            String   @id @default(uuid()) @db.Uuid
-  instrumentId  String   @db.Uuid @map("instrument_id")
-  symbol        String
+  id           String   @id @default(uuid()) @db.Uuid
+  instrumentId String   @map("instrument_id") @db.Uuid
+  symbol       String
   /// 1m | 5m | 15m | 1h | 1d
-  timeframe     String
-  openTime      DateTime @map("open_time")
-  closeTime     DateTime @map("close_time")
-  open          Decimal  @db.Decimal(24, 8)
-  high          Decimal  @db.Decimal(24, 8)
-  low           Decimal  @db.Decimal(24, 8)
-  close         Decimal  @db.Decimal(24, 8)
-  volume        Decimal  @db.Decimal(24, 8)
-  vwap          Decimal? @db.Decimal(24, 8)
-  tradeCount    Int? @map("trade_count")
-  provider      String
-  isAdjusted    Boolean  @default(false) @map("is_adjusted")
-  receivedAt    DateTime @default(now()) @map("received_at")
+  timeframe    String
+  openTime     DateTime @map("open_time")
+  closeTime    DateTime @map("close_time")
+  open         Decimal  @db.Decimal(24, 8)
+  high         Decimal  @db.Decimal(24, 8)
+  low          Decimal  @db.Decimal(24, 8)
+  close        Decimal  @db.Decimal(24, 8)
+  volume       Decimal  @db.Decimal(24, 8)
+  vwap         Decimal? @db.Decimal(24, 8)
+  tradeCount   Int?     @map("trade_count")
+  provider     String
+  isAdjusted   Boolean  @default(false) @map("is_adjusted")
+  receivedAt   DateTime @default(now()) @map("received_at")
 
   instrument Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
 
@@ -544,7 +555,7 @@ model MarketDataCandle {
 
 model MarketDataQualityEvent {
   id           String           @id @default(uuid()) @db.Uuid
-  instrumentId String?          @db.Uuid @map("instrument_id")
+  instrumentId String?          @map("instrument_id") @db.Uuid
   symbol       String?
   provider     String
   issue        DataQualityIssue
@@ -552,7 +563,7 @@ model MarketDataQualityEvent {
   /// True while this event is blocking new trades.
   blocking     Boolean          @default(false)
   detectedAt   DateTime         @default(now()) @map("detected_at")
-  resolvedAt   DateTime? @map("resolved_at")
+  resolvedAt   DateTime?        @map("resolved_at")
 
   instrument Instrument? @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
 
@@ -563,17 +574,17 @@ model MarketDataQualityEvent {
 
 /// One row per market per calendar day — no hard-coded 09:30/16:00 (§7).
 model MarketCalendarDay {
-  id             String    @id @default(uuid()) @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
   /// e.g. XNYS, XNAS, CRYPTO
-  marketCode     String @map("market_code")
-  date           DateTime  @db.Date
-  isTradingDay   Boolean @map("is_trading_day")
-  preMarketOpen  DateTime? @map("pre_market_open")
-  regularOpen    DateTime? @map("regular_open")
-  regularClose   DateTime? @map("regular_close")
+  marketCode      String    @map("market_code")
+  date            DateTime  @db.Date
+  isTradingDay    Boolean   @map("is_trading_day")
+  preMarketOpen   DateTime? @map("pre_market_open")
+  regularOpen     DateTime? @map("regular_open")
+  regularClose    DateTime? @map("regular_close")
   afterHoursClose DateTime? @map("after_hours_close")
-  isEarlyClose   Boolean   @default(false) @map("is_early_close")
-  holidayName    String? @map("holiday_name")
+  isEarlyClose    Boolean   @default(false) @map("is_early_close")
+  holidayName     String?   @map("holiday_name")
 
   @@unique([marketCode, date])
   @@map("market_calendar_days")
@@ -584,7 +595,7 @@ model MarketCalendarDay {
 /// An open halt has `releasedAt` null and blocks trading in that symbol.
 model TradingHalt {
   id           String    @id @default(uuid()) @db.Uuid
-  instrumentId String    @db.Uuid @map("instrument_id")
+  instrumentId String    @map("instrument_id") @db.Uuid
   symbol       String
   /// e.g. LULD, NEWS_PENDING, REGULATORY, PROVIDER_REPORTED
   reason       String
@@ -602,37 +613,37 @@ model TradingHalt {
 }
 
 model MarketRegime {
-  id           String           @id @default(uuid()) @db.Uuid
-  marketCode   String           @default("XNYS") @map("market_code")
-  symbol       String?
-  regime       MarketRegimeType
-  confidence   Decimal          @db.Decimal(8, 6)
+  id         String           @id @default(uuid()) @db.Uuid
+  marketCode String           @default("XNYS") @map("market_code")
+  symbol     String?
+  regime     MarketRegimeType
+  confidence Decimal          @db.Decimal(8, 6)
   /// Inputs that produced the classification, for auditability.
-  inputs       Json
-  detectedAt   DateTime         @default(now()) @map("detected_at")
-  validUntil   DateTime? @map("valid_until")
+  inputs     Json
+  detectedAt DateTime         @default(now()) @map("detected_at")
+  validUntil DateTime?        @map("valid_until")
 
   @@index([marketCode, detectedAt])
   @@map("market_regimes")
 }
 
 model OptionContract {
-  id            String   @id @default(uuid()) @db.Uuid
-  underlyingId  String   @db.Uuid @map("underlying_id")
-  occSymbol     String   @unique @map("occ_symbol")
-  expiration    DateTime @db.Date
-  strike        Decimal  @db.Decimal(24, 8)
-  isCall        Boolean @map("is_call")
-  bid           Decimal? @db.Decimal(24, 8)
-  ask           Decimal? @db.Decimal(24, 8)
-  openInterest  Int? @map("open_interest")
-  volume        Int?
-  impliedVol    Decimal? @db.Decimal(12, 8) @map("implied_vol")
-  delta         Decimal? @db.Decimal(12, 8)
-  gamma         Decimal? @db.Decimal(12, 8)
-  theta         Decimal? @db.Decimal(12, 8)
-  vega          Decimal? @db.Decimal(12, 8)
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid()) @db.Uuid
+  underlyingId String   @map("underlying_id") @db.Uuid
+  occSymbol    String   @unique @map("occ_symbol")
+  expiration   DateTime @db.Date
+  strike       Decimal  @db.Decimal(24, 8)
+  isCall       Boolean  @map("is_call")
+  bid          Decimal? @db.Decimal(24, 8)
+  ask          Decimal? @db.Decimal(24, 8)
+  openInterest Int?     @map("open_interest")
+  volume       Int?
+  impliedVol   Decimal? @map("implied_vol") @db.Decimal(12, 8)
+  delta        Decimal? @db.Decimal(12, 8)
+  gamma        Decimal? @db.Decimal(12, 8)
+  theta        Decimal? @db.Decimal(12, 8)
+  vega         Decimal? @db.Decimal(12, 8)
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   underlying Instrument @relation(fields: [underlyingId], references: [id], onDelete: Cascade)
 
@@ -646,14 +657,14 @@ model OptionContract {
 
 model Watchlist {
   id          String   @id @default(uuid()) @db.Uuid
-  portfolioId String?  @db.Uuid @map("portfolio_id")
+  portfolioId String?  @map("portfolio_id") @db.Uuid
   name        String
   description String?
   isSystem    Boolean  @default(false) @map("is_system")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  portfolio Portfolio?      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio Portfolio?       @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   items     WatchlistItem[]
   scans     ScanDefinition[]
 
@@ -663,8 +674,8 @@ model Watchlist {
 
 model WatchlistItem {
   id           String   @id @default(uuid()) @db.Uuid
-  watchlistId  String   @db.Uuid @map("watchlist_id")
-  instrumentId String   @db.Uuid @map("instrument_id")
+  watchlistId  String   @map("watchlist_id") @db.Uuid
+  instrumentId String   @map("instrument_id") @db.Uuid
   addedAt      DateTime @default(now()) @map("added_at")
 
   watchlist  Watchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
@@ -678,18 +689,18 @@ model WatchlistItem {
 /// grow without a migration; they are validated against a zod schema on the way
 /// in, so a stored scan can always be read back.
 model ScanDefinition {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
   description String?
   /// Candle timeframe the scan evaluates: 1m | 5m | 15m | 1h | 1d
   timeframe   String
   /// Array of { field, operator, operand, operandUpper? }. All must hold.
   conditions  Json
   /// Restrict to one watchlist's symbols. Null scans every known instrument.
-  watchlistId String?  @db.Uuid @map("watchlist_id")
-  createdBy   String?  @db.Uuid @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  watchlistId String?   @map("watchlist_id") @db.Uuid
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   lastRunAt   DateTime? @map("last_run_at")
 
   watchlist Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
@@ -710,9 +721,9 @@ model Strategy {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  versions StrategyVersion[]
-  configs  StrategyPortfolioConfig[]
-  signals  Signal[]
+  versions  StrategyVersion[]
+  configs   StrategyPortfolioConfig[]
+  signals   Signal[]
   backtests Backtest[]
 
   @@map("strategies")
@@ -721,21 +732,21 @@ model Strategy {
 /// Immutable once created. Editing a strategy always creates a new version (§9).
 model StrategyVersion {
   id                String              @id @default(uuid()) @db.Uuid
-  strategyId        String              @db.Uuid @map("strategy_id")
+  strategyId        String              @map("strategy_id") @db.Uuid
   version           Int
   stage             StrategyStage       @default(DRAFT)
-  authorId          String?             @db.Uuid @map("author_id")
-  changeDescription String @map("change_description")
-  previousVersionId String?             @db.Uuid @map("previous_version_id")
+  authorId          String?             @map("author_id") @db.Uuid
+  changeDescription String              @map("change_description")
+  previousVersionId String?             @map("previous_version_id") @db.Uuid
   /// Declarative rule tree — data, never executable code (§8).
   definition        Json
-  riskSettings      Json @map("risk_settings")
+  riskSettings      Json                @map("risk_settings")
   executionMode     ExecutionMode       @default(MANUAL_APPROVAL) @map("execution_mode")
   sessionScope      TradingSessionScope @default(REGULAR_ONLY) @map("session_scope")
-  allowedRegimes    Json? @map("allowed_regimes")
+  allowedRegimes    Json?               @map("allowed_regimes")
   requiresAi        Boolean             @default(false) @map("requires_ai")
-  approvedById      String?             @db.Uuid @map("approved_by_id")
-  approvedAt        DateTime? @map("approved_at")
+  approvedById      String?             @map("approved_by_id") @db.Uuid
+  approvedAt        DateTime?           @map("approved_at")
   createdAt         DateTime            @default(now()) @map("created_at")
 
   strategy        Strategy                  @relation(fields: [strategyId], references: [id], onDelete: Cascade)
@@ -755,17 +766,17 @@ model StrategyVersion {
 /// Binds one strategy version to one portfolio with per-portfolio settings.
 model StrategyPortfolioConfig {
   id                String        @id @default(uuid()) @db.Uuid
-  strategyId        String        @db.Uuid @map("strategy_id")
-  strategyVersionId String        @db.Uuid @map("strategy_version_id")
-  portfolioId       String        @db.Uuid @map("portfolio_id")
+  strategyId        String        @map("strategy_id") @db.Uuid
+  strategyVersionId String        @map("strategy_version_id") @db.Uuid
+  portfolioId       String        @map("portfolio_id") @db.Uuid
   isEnabled         Boolean       @default(false) @map("is_enabled")
   executionMode     ExecutionMode @default(MANUAL_APPROVAL) @map("execution_mode")
   /// Scan cadence in seconds; strategies may override the global scheduler.
   scanIntervalSec   Int           @default(300) @map("scan_interval_sec")
-  positionSizing    Json @map("position_sizing")
+  positionSizing    Json          @map("position_sizing")
   overrides         Json?
-  enabledAt         DateTime? @map("enabled_at")
-  disabledAt        DateTime? @map("disabled_at")
+  enabledAt         DateTime?     @map("enabled_at")
+  disabledAt        DateTime?     @map("disabled_at")
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
@@ -783,37 +794,37 @@ model StrategyPortfolioConfig {
 // ---------------------------------------------------------------------------
 
 model Signal {
-  id                String          @id @default(uuid()) @db.Uuid
+  id                String            @id @default(uuid()) @db.Uuid
   /// Deterministic dedupe key, e.g. RSI_BOUNCE_v3:AAPL:PORTFOLIO_A:2026-09-09T14:30 (§11).
-  signalKey         String          @unique @map("signal_key")
-  correlationId     String          @db.Uuid @map("correlation_id")
-  portfolioId       String          @db.Uuid @map("portfolio_id")
-  strategyId        String?         @db.Uuid @map("strategy_id")
-  strategyVersionId String?         @db.Uuid @map("strategy_version_id")
+  signalKey         String            @unique @map("signal_key")
+  correlationId     String            @map("correlation_id") @db.Uuid
+  portfolioId       String            @map("portfolio_id") @db.Uuid
+  strategyId        String?           @map("strategy_id") @db.Uuid
+  strategyVersionId String?           @map("strategy_version_id") @db.Uuid
   symbol            String
-  assetClass        AssetClass      @default(EQUITY) @map("asset_class")
+  assetClass        AssetClass        @default(EQUITY) @map("asset_class")
   direction         SignalDirection
-  status            SignalStatus    @default(CREATED)
-  technicalScore    Decimal?        @db.Decimal(8, 4) @map("technical_score")
-  referencePrice    Decimal         @db.Decimal(24, 8) @map("reference_price")
-  suggestedStop     Decimal?        @db.Decimal(24, 8) @map("suggested_stop")
-  suggestedTarget   Decimal?        @db.Decimal(24, 8) @map("suggested_target")
-  quantity          Decimal?        @db.Decimal(24, 8)
-  notional          Decimal?        @db.Decimal(24, 8)
-  maxLoss           Decimal?        @db.Decimal(24, 8) @map("max_loss")
+  status            SignalStatus      @default(CREATED)
+  technicalScore    Decimal?          @map("technical_score") @db.Decimal(8, 4)
+  referencePrice    Decimal           @map("reference_price") @db.Decimal(24, 8)
+  suggestedStop     Decimal?          @map("suggested_stop") @db.Decimal(24, 8)
+  suggestedTarget   Decimal?          @map("suggested_target") @db.Decimal(24, 8)
+  quantity          Decimal?          @db.Decimal(24, 8)
+  notional          Decimal?          @db.Decimal(24, 8)
+  maxLoss           Decimal?          @map("max_loss") @db.Decimal(24, 8)
   marketRegime      MarketRegimeType? @map("market_regime")
-  conditionSnapshot Json @map("condition_snapshot")
-  rejectionReason   String? @map("rejection_reason")
-  expiresAt         DateTime? @map("expires_at")
-  approvedById      String?         @db.Uuid @map("approved_by_id")
-  approvedAt        DateTime? @map("approved_at")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  conditionSnapshot Json              @map("condition_snapshot")
+  rejectionReason   String?           @map("rejection_reason")
+  expiresAt         DateTime?         @map("expires_at")
+  approvedById      String?           @map("approved_by_id") @db.Uuid
+  approvedAt        DateTime?         @map("approved_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  portfolio       Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  strategy        Strategy?        @relation(fields: [strategyId], references: [id], onDelete: SetNull)
-  strategyVersion StrategyVersion? @relation(fields: [strategyVersionId], references: [id], onDelete: SetNull)
-  approvedBy      User?            @relation("SignalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  portfolio       Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  strategy        Strategy?           @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  strategyVersion StrategyVersion?    @relation(fields: [strategyVersionId], references: [id], onDelete: SetNull)
+  approvedBy      User?               @relation("SignalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   events          SignalEvent[]
   orders          Order[]
   aiAnalyses      AiAnalysis[]
@@ -828,14 +839,14 @@ model Signal {
 
 /// Append-only transition log for a signal — the lifecycle is never a boolean.
 model SignalEvent {
-  id         String       @id @default(uuid()) @db.Uuid
-  signalId   String       @db.Uuid @map("signal_id")
+  id         String        @id @default(uuid()) @db.Uuid
+  signalId   String        @map("signal_id") @db.Uuid
   fromStatus SignalStatus? @map("from_status")
-  toStatus   SignalStatus @map("to_status")
+  toStatus   SignalStatus  @map("to_status")
   reason     String?
   actor      String
   metadata   Json?
-  createdAt  DateTime     @default(now()) @map("created_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
 
   signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
 
@@ -848,42 +859,42 @@ model SignalEvent {
 // ---------------------------------------------------------------------------
 
 model Order {
-  id               String      @id @default(uuid()) @db.Uuid
+  id               String             @id @default(uuid()) @db.Uuid
   /// Mandatory (§25). A retry with the same key must never place a second order.
-  idempotencyKey   String      @unique @map("idempotency_key")
-  correlationId    String      @db.Uuid @map("correlation_id")
-  portfolioId      String      @db.Uuid @map("portfolio_id")
-  brokerAccountId  String?     @db.Uuid @map("broker_account_id")
-  signalId         String?     @db.Uuid @map("signal_id")
-  strategyId       String?     @db.Uuid @map("strategy_id")
+  idempotencyKey   String             @unique @map("idempotency_key")
+  correlationId    String             @map("correlation_id") @db.Uuid
+  portfolioId      String             @map("portfolio_id") @db.Uuid
+  brokerAccountId  String?            @map("broker_account_id") @db.Uuid
+  signalId         String?            @map("signal_id") @db.Uuid
+  strategyId       String?            @map("strategy_id") @db.Uuid
   environment      TradingEnvironment
-  brokerOrderId    String? @map("broker_order_id")
+  brokerOrderId    String?            @map("broker_order_id")
   symbol           String
-  assetClass       AssetClass  @default(EQUITY) @map("asset_class")
+  assetClass       AssetClass         @default(EQUITY) @map("asset_class")
   side             OrderSide
-  orderType        OrderType @map("order_type")
-  timeInForce      TimeInForce @default(DAY) @map("time_in_force")
-  status           OrderStatus @default(CREATED)
-  requestedQty     Decimal     @db.Decimal(24, 8) @map("requested_qty")
-  filledQty        Decimal     @default(0) @db.Decimal(24, 8) @map("filled_qty")
-  limitPrice       Decimal?    @db.Decimal(24, 8) @map("limit_price")
-  stopPrice        Decimal?    @db.Decimal(24, 8) @map("stop_price")
+  orderType        OrderType          @map("order_type")
+  timeInForce      TimeInForce        @default(DAY) @map("time_in_force")
+  status           OrderStatus        @default(CREATED)
+  requestedQty     Decimal            @map("requested_qty") @db.Decimal(24, 8)
+  filledQty        Decimal            @default(0) @map("filled_qty") @db.Decimal(24, 8)
+  limitPrice       Decimal?           @map("limit_price") @db.Decimal(24, 8)
+  stopPrice        Decimal?           @map("stop_price") @db.Decimal(24, 8)
   /// Price used for the slippage calculation (§28).
-  expectedPrice    Decimal?    @db.Decimal(24, 8) @map("expected_price")
-  averageFillPrice Decimal?    @db.Decimal(24, 8) @map("average_fill_price")
-  slippage         Decimal?    @db.Decimal(24, 8)
-  slippagePct      Decimal?    @db.Decimal(12, 8) @map("slippage_pct")
-  feesTotal        Decimal     @default(0) @db.Decimal(24, 8) @map("fees_total")
-  rejectionReason  String? @map("rejection_reason")
+  expectedPrice    Decimal?           @map("expected_price") @db.Decimal(24, 8)
+  averageFillPrice Decimal?           @map("average_fill_price") @db.Decimal(24, 8)
+  slippage         Decimal?           @db.Decimal(24, 8)
+  slippagePct      Decimal?           @map("slippage_pct") @db.Decimal(12, 8)
+  feesTotal        Decimal            @default(0) @map("fees_total") @db.Decimal(24, 8)
+  rejectionReason  String?            @map("rejection_reason")
   /// Verbatim broker payloads, secrets stripped.
-  brokerResponse   Json? @map("broker_response")
-  submittedAt      DateTime? @map("submitted_at")
-  acknowledgedAt   DateTime? @map("acknowledged_at")
-  filledAt         DateTime? @map("filled_at")
-  cancelledAt      DateTime? @map("cancelled_at")
-  lastSyncedAt     DateTime? @map("last_synced_at")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  brokerResponse   Json?              @map("broker_response")
+  submittedAt      DateTime?          @map("submitted_at")
+  acknowledgedAt   DateTime?          @map("acknowledged_at")
+  filledAt         DateTime?          @map("filled_at")
+  cancelledAt      DateTime?          @map("cancelled_at")
+  lastSyncedAt     DateTime?          @map("last_synced_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
 
   portfolio     Portfolio      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   brokerAccount BrokerAccount? @relation(fields: [brokerAccountId], references: [id], onDelete: SetNull)
@@ -901,9 +912,9 @@ model Order {
 
 model OrderEvent {
   id         String       @id @default(uuid()) @db.Uuid
-  orderId    String       @db.Uuid @map("order_id")
+  orderId    String       @map("order_id") @db.Uuid
   fromStatus OrderStatus? @map("from_status")
-  toStatus   OrderStatus @map("to_status")
+  toStatus   OrderStatus  @map("to_status")
   reason     String?
   actor      String
   metadata   Json?
@@ -916,22 +927,22 @@ model OrderEvent {
 }
 
 model Execution {
-  id             String   @id @default(uuid()) @db.Uuid
-  orderId        String   @db.Uuid @map("order_id")
-  portfolioId    String   @db.Uuid @map("portfolio_id")
+  id            String    @id @default(uuid()) @db.Uuid
+  orderId       String    @map("order_id") @db.Uuid
+  portfolioId   String    @map("portfolio_id") @db.Uuid
   /// Broker execution id — unique per broker, used for idempotent ingestion.
-  brokerExecId   String?  @unique @map("broker_exec_id")
-  symbol         String
-  side           OrderSide
-  quantity       Decimal  @db.Decimal(24, 8)
-  price          Decimal  @db.Decimal(24, 8)
-  fees           Decimal  @default(0) @db.Decimal(24, 8)
-  executedAt     DateTime @map("executed_at")
-  recordedAt     DateTime @default(now()) @map("recorded_at")
-  liquidityFlag  String? @map("liquidity_flag")
+  brokerExecId  String?   @unique @map("broker_exec_id")
+  symbol        String
+  side          OrderSide
+  quantity      Decimal   @db.Decimal(24, 8)
+  price         Decimal   @db.Decimal(24, 8)
+  fees          Decimal   @default(0) @db.Decimal(24, 8)
+  executedAt    DateTime  @map("executed_at")
+  recordedAt    DateTime  @default(now()) @map("recorded_at")
+  liquidityFlag String?   @map("liquidity_flag")
 
-  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  portfolio Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   lots      PositionLot[]
 
   @@index([orderId])
@@ -941,28 +952,31 @@ model Execution {
 
 model Position {
   id                String         @id @default(uuid()) @db.Uuid
-  portfolioId       String         @db.Uuid @map("portfolio_id")
+  portfolioId       String         @map("portfolio_id") @db.Uuid
   symbol            String
   assetClass        AssetClass     @default(EQUITY) @map("asset_class")
   status            PositionStatus @default(OPEN)
+  /// TRADED positions trace to a fill; IMPORTED ones never can, and every
+  /// reader that cares about provenance checks this rather than inferring it.
+  origin            PositionOrigin @default(TRADED)
   quantity          Decimal        @db.Decimal(24, 8)
-  averageEntryPrice Decimal        @db.Decimal(24, 8) @map("average_entry_price")
-  markPrice         Decimal?       @db.Decimal(24, 8) @map("mark_price")
-  realizedPnl       Decimal        @default(0) @db.Decimal(24, 8) @map("realized_pnl")
-  unrealizedPnl     Decimal        @default(0) @db.Decimal(24, 8) @map("unrealized_pnl")
-  feesTotal         Decimal        @default(0) @db.Decimal(24, 8) @map("fees_total")
-  stopPrice         Decimal?       @db.Decimal(24, 8) @map("stop_price")
-  targetPrice       Decimal?       @db.Decimal(24, 8) @map("target_price")
+  averageEntryPrice Decimal        @map("average_entry_price") @db.Decimal(24, 8)
+  markPrice         Decimal?       @map("mark_price") @db.Decimal(24, 8)
+  realizedPnl       Decimal        @default(0) @map("realized_pnl") @db.Decimal(24, 8)
+  unrealizedPnl     Decimal        @default(0) @map("unrealized_pnl") @db.Decimal(24, 8)
+  feesTotal         Decimal        @default(0) @map("fees_total") @db.Decimal(24, 8)
+  stopPrice         Decimal?       @map("stop_price") @db.Decimal(24, 8)
+  targetPrice       Decimal?       @map("target_price") @db.Decimal(24, 8)
   /// Maximum adverse / favourable excursion (§69).
-  maeAmount         Decimal?       @db.Decimal(24, 8) @map("mae_amount")
-  mfeAmount         Decimal?       @db.Decimal(24, 8) @map("mfe_amount")
+  maeAmount         Decimal?       @map("mae_amount") @db.Decimal(24, 8)
+  mfeAmount         Decimal?       @map("mfe_amount") @db.Decimal(24, 8)
   openedAt          DateTime       @default(now()) @map("opened_at")
-  closedAt          DateTime? @map("closed_at")
-  lastReconciledAt  DateTime? @map("last_reconciled_at")
+  closedAt          DateTime?      @map("closed_at")
+  lastReconciledAt  DateTime?      @map("last_reconciled_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  portfolio Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  lots      PositionLot[]
+  portfolio      Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  lots           PositionLot[]
   journalEntries TradeJournalEntry[]
 
   // A partial unique index (one OPEN position per symbol) is added in the
@@ -974,15 +988,15 @@ model Position {
 
 /// Tax lots for cost-basis tracking (§44).
 model PositionLot {
-  id             String    @id @default(uuid()) @db.Uuid
-  positionId     String    @db.Uuid @map("position_id")
-  executionId    String?   @db.Uuid @map("execution_id")
-  quantity       Decimal   @db.Decimal(24, 8)
-  remainingQty   Decimal   @db.Decimal(24, 8) @map("remaining_qty")
-  costBasis      Decimal   @db.Decimal(24, 8) @map("cost_basis")
-  openedAt       DateTime @map("opened_at")
-  closedAt       DateTime? @map("closed_at")
-  realizedGain   Decimal   @default(0) @db.Decimal(24, 8) @map("realized_gain")
+  id           String    @id @default(uuid()) @db.Uuid
+  positionId   String    @map("position_id") @db.Uuid
+  executionId  String?   @map("execution_id") @db.Uuid
+  quantity     Decimal   @db.Decimal(24, 8)
+  remainingQty Decimal   @map("remaining_qty") @db.Decimal(24, 8)
+  costBasis    Decimal   @map("cost_basis") @db.Decimal(24, 8)
+  openedAt     DateTime  @map("opened_at")
+  closedAt     DateTime? @map("closed_at")
+  realizedGain Decimal   @default(0) @map("realized_gain") @db.Decimal(24, 8)
 
   position  Position   @relation(fields: [positionId], references: [id], onDelete: Cascade)
   execution Execution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
@@ -992,17 +1006,17 @@ model PositionLot {
 }
 
 model Reconciliation {
-  id              String    @id @default(uuid()) @db.Uuid
-  brokerAccountId String    @db.Uuid @map("broker_account_id")
-  startedAt       DateTime  @default(now()) @map("started_at")
-  finishedAt      DateTime? @map("finished_at")
-  succeeded       Boolean   @default(false)
-  cashMismatch    Boolean   @default(false) @map("cash_mismatch")
-  positionMismatch Boolean  @default(false) @map("position_mismatch")
-  orderMismatch   Boolean   @default(false) @map("order_mismatch")
+  id               String    @id @default(uuid()) @db.Uuid
+  brokerAccountId  String    @map("broker_account_id") @db.Uuid
+  startedAt        DateTime  @default(now()) @map("started_at")
+  finishedAt       DateTime? @map("finished_at")
+  succeeded        Boolean   @default(false)
+  cashMismatch     Boolean   @default(false) @map("cash_mismatch")
+  positionMismatch Boolean   @default(false) @map("position_mismatch")
+  orderMismatch    Boolean   @default(false) @map("order_mismatch")
   /// Field-by-field differences; never used to silently overwrite records (§26).
-  differences     Json?
-  detail          String?
+  differences      Json?
+  detail           String?
 
   brokerAccount BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
 
@@ -1016,23 +1030,23 @@ model Reconciliation {
 
 /// Versioned risk limits. A change writes a new row; old rows stay for audit.
 model RiskLimit {
-  id                     String   @id @default(uuid()) @db.Uuid
-  portfolioId            String   @db.Uuid @map("portfolio_id")
-  version                Int      @default(1)
-  isActive               Boolean  @default(true) @map("is_active")
-  maxDailyLoss           Decimal  @db.Decimal(24, 8) @map("max_daily_loss")
-  maxWeeklyLoss          Decimal  @db.Decimal(24, 8) @map("max_weekly_loss")
-  maxPositionSize        Decimal  @db.Decimal(24, 8) @map("max_position_size")
-  maxPortfolioExposurePct Decimal @db.Decimal(12, 6) @map("max_portfolio_exposure_pct")
-  maxSectorExposurePct   Decimal  @db.Decimal(12, 6) @map("max_sector_exposure_pct")
-  maxSymbolExposurePct   Decimal  @db.Decimal(12, 6) @map("max_symbol_exposure_pct")
-  maxOpenPositions       Int @map("max_open_positions")
-  maxTradesPerDay        Int @map("max_trades_per_day")
-  maxConsecutiveLosses   Int @map("max_consecutive_losses")
-  maxDrawdownPct         Decimal  @db.Decimal(12, 6) @map("max_drawdown_pct")
-  changedById            String?  @db.Uuid @map("changed_by_id")
-  changeReason           String? @map("change_reason")
-  createdAt              DateTime @default(now()) @map("created_at")
+  id                      String   @id @default(uuid()) @db.Uuid
+  portfolioId             String   @map("portfolio_id") @db.Uuid
+  version                 Int      @default(1)
+  isActive                Boolean  @default(true) @map("is_active")
+  maxDailyLoss            Decimal  @map("max_daily_loss") @db.Decimal(24, 8)
+  maxWeeklyLoss           Decimal  @map("max_weekly_loss") @db.Decimal(24, 8)
+  maxPositionSize         Decimal  @map("max_position_size") @db.Decimal(24, 8)
+  maxPortfolioExposurePct Decimal  @map("max_portfolio_exposure_pct") @db.Decimal(12, 6)
+  maxSectorExposurePct    Decimal  @map("max_sector_exposure_pct") @db.Decimal(12, 6)
+  maxSymbolExposurePct    Decimal  @map("max_symbol_exposure_pct") @db.Decimal(12, 6)
+  maxOpenPositions        Int      @map("max_open_positions")
+  maxTradesPerDay         Int      @map("max_trades_per_day")
+  maxConsecutiveLosses    Int      @map("max_consecutive_losses")
+  maxDrawdownPct          Decimal  @map("max_drawdown_pct") @db.Decimal(12, 6)
+  changedById             String?  @map("changed_by_id") @db.Uuid
+  changeReason            String?  @map("change_reason")
+  createdAt               DateTime @default(now()) @map("created_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   changedBy User?     @relation(fields: [changedById], references: [id], onDelete: SetNull)
@@ -1044,17 +1058,17 @@ model RiskLimit {
 
 model RiskEvent {
   id          String            @id @default(uuid()) @db.Uuid
-  portfolioId String?           @db.Uuid @map("portfolio_id")
-  signalId    String?           @db.Uuid @map("signal_id")
+  portfolioId String?           @map("portfolio_id") @db.Uuid
+  signalId    String?           @map("signal_id") @db.Uuid
   type        RiskEventType
   severity    RiskEventSeverity @default(WARNING)
   /// Human-readable rejection reason surfaced in the UI (§20).
   message     String
-  limitName   String? @map("limit_name")
-  limitValue  Decimal?          @db.Decimal(24, 8) @map("limit_value")
-  actualValue Decimal?          @db.Decimal(24, 8) @map("actual_value")
+  limitName   String?           @map("limit_name")
+  limitValue  Decimal?          @map("limit_value") @db.Decimal(24, 8)
+  actualValue Decimal?          @map("actual_value") @db.Decimal(24, 8)
   metadata    Json?
-  resolvedAt  DateTime? @map("resolved_at")
+  resolvedAt  DateTime?         @map("resolved_at")
   createdAt   DateTime          @default(now()) @map("created_at")
 
   portfolio Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
@@ -1071,16 +1085,16 @@ model RiskEvent {
 
 model PortfolioSnapshot {
   id             String   @id @default(uuid()) @db.Uuid
-  portfolioId    String   @db.Uuid @map("portfolio_id")
+  portfolioId    String   @map("portfolio_id") @db.Uuid
   asOf           DateTime @map("as_of")
-  cashBalance    Decimal  @db.Decimal(24, 8) @map("cash_balance")
-  positionsValue Decimal  @db.Decimal(24, 8) @map("positions_value")
+  cashBalance    Decimal  @map("cash_balance") @db.Decimal(24, 8)
+  positionsValue Decimal  @map("positions_value") @db.Decimal(24, 8)
   equity         Decimal  @db.Decimal(24, 8)
   /// Net external cash movement during the period — required for TWR (§42).
-  netCashFlow    Decimal  @default(0) @db.Decimal(24, 8) @map("net_cash_flow")
-  realizedPnl    Decimal  @default(0) @db.Decimal(24, 8) @map("realized_pnl")
-  unrealizedPnl  Decimal  @default(0) @db.Decimal(24, 8) @map("unrealized_pnl")
-  feesTotal      Decimal  @default(0) @db.Decimal(24, 8) @map("fees_total")
+  netCashFlow    Decimal  @default(0) @map("net_cash_flow") @db.Decimal(24, 8)
+  realizedPnl    Decimal  @default(0) @map("realized_pnl") @db.Decimal(24, 8)
+  unrealizedPnl  Decimal  @default(0) @map("unrealized_pnl") @db.Decimal(24, 8)
+  feesTotal      Decimal  @default(0) @map("fees_total") @db.Decimal(24, 8)
   openPositions  Int      @default(0) @map("open_positions")
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -1092,27 +1106,27 @@ model PortfolioSnapshot {
 }
 
 model PerformanceMetric {
-  id           String   @id @default(uuid()) @db.Uuid
-  portfolioId  String   @db.Uuid @map("portfolio_id")
-  strategyId   String?  @db.Uuid @map("strategy_id")
+  id                  String   @id @default(uuid()) @db.Uuid
+  portfolioId         String   @map("portfolio_id") @db.Uuid
+  strategyId          String?  @map("strategy_id") @db.Uuid
   /// DAY | WEEK | MONTH | YEAR | INCEPTION
-  period       String
-  periodStart  DateTime @map("period_start")
-  periodEnd    DateTime @map("period_end")
-  grossPnl     Decimal  @db.Decimal(24, 8) @map("gross_pnl")
-  fees         Decimal  @db.Decimal(24, 8)
-  netPnl       Decimal  @db.Decimal(24, 8) @map("net_pnl")
-  timeWeightedReturn Decimal? @db.Decimal(16, 8) @map("time_weighted_return")
-  moneyWeightedReturn Decimal? @db.Decimal(16, 8) @map("money_weighted_return")
-  maxDrawdownPct Decimal? @db.Decimal(12, 6) @map("max_drawdown_pct")
-  sharpe       Decimal? @db.Decimal(12, 6)
-  sortino      Decimal? @db.Decimal(12, 6)
-  calmar       Decimal? @db.Decimal(12, 6)
-  winRate      Decimal? @db.Decimal(8, 6) @map("win_rate")
-  profitFactor Decimal? @db.Decimal(12, 6) @map("profit_factor")
-  expectancy   Decimal? @db.Decimal(24, 8)
-  tradeCount   Int      @default(0) @map("trade_count")
-  computedAt   DateTime @default(now()) @map("computed_at")
+  period              String
+  periodStart         DateTime @map("period_start")
+  periodEnd           DateTime @map("period_end")
+  grossPnl            Decimal  @map("gross_pnl") @db.Decimal(24, 8)
+  fees                Decimal  @db.Decimal(24, 8)
+  netPnl              Decimal  @map("net_pnl") @db.Decimal(24, 8)
+  timeWeightedReturn  Decimal? @map("time_weighted_return") @db.Decimal(16, 8)
+  moneyWeightedReturn Decimal? @map("money_weighted_return") @db.Decimal(16, 8)
+  maxDrawdownPct      Decimal? @map("max_drawdown_pct") @db.Decimal(12, 6)
+  sharpe              Decimal? @db.Decimal(12, 6)
+  sortino             Decimal? @db.Decimal(12, 6)
+  calmar              Decimal? @db.Decimal(12, 6)
+  winRate             Decimal? @map("win_rate") @db.Decimal(8, 6)
+  profitFactor        Decimal? @map("profit_factor") @db.Decimal(12, 6)
+  expectancy          Decimal? @db.Decimal(24, 8)
+  tradeCount          Int      @default(0) @map("trade_count")
+  computedAt          DateTime @default(now()) @map("computed_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
 
@@ -1122,17 +1136,17 @@ model PerformanceMetric {
 }
 
 model Fee {
-  id          String   @id @default(uuid()) @db.Uuid
-  portfolioId String   @db.Uuid @map("portfolio_id")
-  orderId     String?  @db.Uuid @map("order_id")
-  type        FeeType
-  amount      Decimal  @db.Decimal(24, 8)
-  currency    String   @default("USD")
-  description String?
+  id            String   @id @default(uuid()) @db.Uuid
+  portfolioId   String   @map("portfolio_id") @db.Uuid
+  orderId       String?  @map("order_id") @db.Uuid
+  type          FeeType
+  amount        Decimal  @db.Decimal(24, 8)
+  currency      String   @default("USD")
+  description   String?
   /// High-water mark applied when this performance fee was crystallised (§43).
-  highWaterMark Decimal? @db.Decimal(24, 8) @map("high_water_mark")
-  hurdleRatePct Decimal? @db.Decimal(12, 6) @map("hurdle_rate_pct")
-  incurredAt  DateTime @default(now()) @map("incurred_at")
+  highWaterMark Decimal? @map("high_water_mark") @db.Decimal(24, 8)
+  hurdleRatePct Decimal? @map("hurdle_rate_pct") @db.Decimal(12, 6)
+  incurredAt    DateTime @default(now()) @map("incurred_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   order     Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -1144,13 +1158,13 @@ model Fee {
 /// Deposits and withdrawals share a table so TWR always sees every cash flow.
 model CashFlow {
   id          String       @id @default(uuid()) @db.Uuid
-  portfolioId String       @db.Uuid @map("portfolio_id")
+  portfolioId String       @map("portfolio_id") @db.Uuid
   type        CashFlowType
   amount      Decimal      @db.Decimal(24, 8)
   currency    String       @default("USD")
   reference   String?
   note        String?
-  occurredAt  DateTime @map("occurred_at")
+  occurredAt  DateTime     @map("occurred_at")
   createdAt   DateTime     @default(now()) @map("created_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
@@ -1164,27 +1178,27 @@ model CashFlow {
 // ---------------------------------------------------------------------------
 
 model AiAnalysis {
-  id             String   @id @default(uuid()) @db.Uuid
-  portfolioId    String?  @db.Uuid @map("portfolio_id")
-  signalId       String?  @db.Uuid @map("signal_id")
-  correlationId  String?  @db.Uuid @map("correlation_id")
-  model          String
-  purpose        String
+  id              String            @id @default(uuid()) @db.Uuid
+  portfolioId     String?           @map("portfolio_id") @db.Uuid
+  signalId        String?           @map("signal_id") @db.Uuid
+  correlationId   String?           @map("correlation_id") @db.Uuid
+  model           String
+  purpose         String
   /// Exact structured context sent to the model — never contains secrets (§53).
-  requestPayload Json @map("request_payload")
-  responsePayload Json? @map("response_payload")
+  requestPayload  Json              @map("request_payload")
+  responsePayload Json?             @map("response_payload")
   /// False when the response failed schema validation; such a run never trades.
-  responseValid  Boolean  @default(false) @map("response_valid")
-  validationError String? @map("validation_error")
-  action         String?
-  confidence     Decimal? @db.Decimal(8, 6)
-  riskLevel      String? @map("risk_level")
-  marketRegime   MarketRegimeType? @map("market_regime")
-  inputTokens    Int? @map("input_tokens")
-  outputTokens   Int? @map("output_tokens")
-  costUsd        Decimal? @db.Decimal(16, 8) @map("cost_usd")
-  latencyMs      Int? @map("latency_ms")
-  createdAt      DateTime @default(now()) @map("created_at")
+  responseValid   Boolean           @default(false) @map("response_valid")
+  validationError String?           @map("validation_error")
+  action          String?
+  confidence      Decimal?          @db.Decimal(8, 6)
+  riskLevel       String?           @map("risk_level")
+  marketRegime    MarketRegimeType? @map("market_regime")
+  inputTokens     Int?              @map("input_tokens")
+  outputTokens    Int?              @map("output_tokens")
+  costUsd         Decimal?          @map("cost_usd") @db.Decimal(16, 8)
+  latencyMs       Int?              @map("latency_ms")
+  createdAt       DateTime          @default(now()) @map("created_at")
 
   portfolio Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   signal    Signal?    @relation(fields: [signalId], references: [id], onDelete: SetNull)
@@ -1200,21 +1214,21 @@ model AiAnalysis {
 
 model Backtest {
   id                String         @id @default(uuid()) @db.Uuid
-  portfolioId       String?        @db.Uuid @map("portfolio_id")
-  strategyId        String         @db.Uuid @map("strategy_id")
-  strategyVersionId String         @db.Uuid @map("strategy_version_id")
-  requestedById     String?        @db.Uuid @map("requested_by_id")
+  portfolioId       String?        @map("portfolio_id") @db.Uuid
+  strategyId        String         @map("strategy_id") @db.Uuid
+  strategyVersionId String         @map("strategy_version_id") @db.Uuid
+  requestedById     String?        @map("requested_by_id") @db.Uuid
   status            BacktestStatus @default(QUEUED)
   timeframe         String
-  startDate         DateTime @map("start_date")
-  endDate           DateTime @map("end_date")
-  initialCapital    Decimal        @db.Decimal(24, 8) @map("initial_capital")
+  startDate         DateTime       @map("start_date")
+  endDate           DateTime       @map("end_date")
+  initialCapital    Decimal        @map("initial_capital") @db.Decimal(24, 8)
   /// Universe, sizing, fee and slippage assumptions used for this run (§29).
   parameters        Json
   results           Json?
-  errorMessage      String? @map("error_message")
-  startedAt         DateTime? @map("started_at")
-  finishedAt        DateTime? @map("finished_at")
+  errorMessage      String?        @map("error_message")
+  startedAt         DateTime?      @map("started_at")
+  finishedAt        DateTime?      @map("finished_at")
   createdAt         DateTime       @default(now()) @map("created_at")
 
   portfolio       Portfolio?      @relation(fields: [portfolioId], references: [id], onDelete: SetNull)
@@ -1228,23 +1242,23 @@ model Backtest {
 }
 
 model BacktestTrade {
-  id           String    @id @default(uuid()) @db.Uuid
-  backtestId   String    @db.Uuid @map("backtest_id")
+  id           String            @id @default(uuid()) @db.Uuid
+  backtestId   String            @map("backtest_id") @db.Uuid
   symbol       String
   direction    SignalDirection
-  quantity     Decimal   @db.Decimal(24, 8)
-  entryTime    DateTime @map("entry_time")
-  entryPrice   Decimal   @db.Decimal(24, 8) @map("entry_price")
-  exitTime     DateTime? @map("exit_time")
-  exitPrice    Decimal?  @db.Decimal(24, 8) @map("exit_price")
-  grossPnl     Decimal?  @db.Decimal(24, 8) @map("gross_pnl")
-  fees         Decimal   @default(0) @db.Decimal(24, 8)
-  slippage     Decimal   @default(0) @db.Decimal(24, 8)
-  netPnl       Decimal?  @db.Decimal(24, 8) @map("net_pnl")
-  rMultiple    Decimal?  @db.Decimal(12, 6) @map("r_multiple")
-  maeAmount    Decimal?  @db.Decimal(24, 8) @map("mae_amount")
-  mfeAmount    Decimal?  @db.Decimal(24, 8) @map("mfe_amount")
-  exitReason   String? @map("exit_reason")
+  quantity     Decimal           @db.Decimal(24, 8)
+  entryTime    DateTime          @map("entry_time")
+  entryPrice   Decimal           @map("entry_price") @db.Decimal(24, 8)
+  exitTime     DateTime?         @map("exit_time")
+  exitPrice    Decimal?          @map("exit_price") @db.Decimal(24, 8)
+  grossPnl     Decimal?          @map("gross_pnl") @db.Decimal(24, 8)
+  fees         Decimal           @default(0) @db.Decimal(24, 8)
+  slippage     Decimal           @default(0) @db.Decimal(24, 8)
+  netPnl       Decimal?          @map("net_pnl") @db.Decimal(24, 8)
+  rMultiple    Decimal?          @map("r_multiple") @db.Decimal(12, 6)
+  maeAmount    Decimal?          @map("mae_amount") @db.Decimal(24, 8)
+  mfeAmount    Decimal?          @map("mfe_amount") @db.Decimal(24, 8)
+  exitReason   String?           @map("exit_reason")
   marketRegime MarketRegimeType? @map("market_regime")
 
   backtest Backtest @relation(fields: [backtestId], references: [id], onDelete: Cascade)
@@ -1257,14 +1271,14 @@ model BacktestTrade {
 /// executions so live/paper comparisons stay honest (§35).
 model PaperTrade {
   id             String    @id @default(uuid()) @db.Uuid
-  portfolioId    String    @db.Uuid @map("portfolio_id")
-  orderId        String?   @db.Uuid @map("order_id")
+  portfolioId    String    @map("portfolio_id") @db.Uuid
+  orderId        String?   @map("order_id") @db.Uuid
   symbol         String
   side           OrderSide
   quantity       Decimal   @db.Decimal(24, 8)
-  requestedPrice Decimal?  @db.Decimal(24, 8) @map("requested_price")
-  fillPrice      Decimal   @db.Decimal(24, 8) @map("fill_price")
-  spreadCost     Decimal   @default(0) @db.Decimal(24, 8) @map("spread_cost")
+  requestedPrice Decimal?  @map("requested_price") @db.Decimal(24, 8)
+  fillPrice      Decimal   @map("fill_price") @db.Decimal(24, 8)
+  spreadCost     Decimal   @default(0) @map("spread_cost") @db.Decimal(24, 8)
   slippage       Decimal   @default(0) @db.Decimal(24, 8)
   commission     Decimal   @default(0) @db.Decimal(24, 8)
   latencyMs      Int       @default(0) @map("latency_ms")
@@ -1275,22 +1289,22 @@ model PaperTrade {
 }
 
 model TradeJournalEntry {
-  id             String   @id @default(uuid()) @db.Uuid
-  portfolioId    String   @db.Uuid @map("portfolio_id")
-  positionId     String?  @db.Uuid @map("position_id")
-  signalId       String?  @db.Uuid @map("signal_id")
-  authorId       String?  @db.Uuid @map("author_id")
+  id               String            @id @default(uuid()) @db.Uuid
+  portfolioId      String            @map("portfolio_id") @db.Uuid
+  positionId       String?           @map("position_id") @db.Uuid
+  signalId         String?           @map("signal_id") @db.Uuid
+  authorId         String?           @map("author_id") @db.Uuid
   /// Automatically captured at entry; user notes are appended, never overwritten.
-  entryThesis    String? @map("entry_thesis")
-  technicalContext Json? @map("technical_context")
-  aiReasoning    String? @map("ai_reasoning")
-  marketRegime   MarketRegimeType? @map("market_regime")
-  outcome        String?
-  lessons        String?
-  userNotes      String? @map("user_notes")
-  chartSnapshotUrl String? @map("chart_snapshot_url")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  entryThesis      String?           @map("entry_thesis")
+  technicalContext Json?             @map("technical_context")
+  aiReasoning      String?           @map("ai_reasoning")
+  marketRegime     MarketRegimeType? @map("market_regime")
+  outcome          String?
+  lessons          String?
+  userNotes        String?           @map("user_notes")
+  chartSnapshotUrl String?           @map("chart_snapshot_url")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   position  Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
@@ -1309,7 +1323,7 @@ model SystemHealthCheck {
   id            String        @id @default(uuid()) @db.Uuid
   service       ServiceName
   status        ServiceStatus
-  latencyMs     Int? @map("latency_ms")
+  latencyMs     Int?          @map("latency_ms")
   detail        String?
   /// Consecutive failures — drives the circuit breaker (§56).
   failureStreak Int           @default(0) @map("failure_streak")
@@ -1321,15 +1335,15 @@ model SystemHealthCheck {
 
 model Notification {
   id          String              @id @default(uuid()) @db.Uuid
-  userId      String?             @db.Uuid @map("user_id")
-  portfolioId String?             @db.Uuid @map("portfolio_id")
+  userId      String?             @map("user_id") @db.Uuid
+  portfolioId String?             @map("portfolio_id") @db.Uuid
   channel     NotificationChannel
   status      NotificationStatus  @default(PENDING)
   event       String
   title       String
   body        String
   metadata    Json?
-  sentAt      DateTime? @map("sent_at")
+  sentAt      DateTime?           @map("sent_at")
   error       String?
   createdAt   DateTime            @default(now()) @map("created_at")
 
@@ -1343,14 +1357,14 @@ model Notification {
 
 model Report {
   id          String   @id @default(uuid()) @db.Uuid
-  portfolioId String?  @db.Uuid @map("portfolio_id")
-  clientId    String?  @db.Uuid @map("client_id")
+  portfolioId String?  @map("portfolio_id") @db.Uuid
+  clientId    String?  @map("client_id") @db.Uuid
   /// DAILY | WEEKLY | MONTHLY | CLIENT
   kind        String
   periodStart DateTime @map("period_start")
   periodEnd   DateTime @map("period_end")
   format      String   @default("PDF")
-  storageKey  String? @map("storage_key")
+  storageKey  String?  @map("storage_key")
   payload     Json?
   generatedAt DateTime @default(now()) @map("generated_at")
 
@@ -1379,11 +1393,11 @@ model ComplianceDocument {
 
 model ClientConsent {
   id         String   @id @default(uuid()) @db.Uuid
-  clientId   String   @db.Uuid @map("client_id")
-  documentId String   @db.Uuid @map("document_id")
+  clientId   String   @map("client_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
   acceptedAt DateTime @default(now()) @map("accepted_at")
   ip         String?
-  userAgent  String? @map("user_agent")
+  userAgent  String?  @map("user_agent")
 
   client   Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   document ComplianceDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
@@ -1395,28 +1409,28 @@ model ClientConsent {
 /// Append-only. UPDATE and DELETE are blocked by a database trigger, and each
 /// row is chained to its predecessor by hash so tampering is detectable (§51).
 model AuditLog {
-  seq           BigInt   @id @default(autoincrement())
-  id            String   @unique @default(uuid()) @db.Uuid
-  occurredAt    DateTime @default(now()) @map("occurred_at")
-  actorUserId   String?  @db.Uuid @map("actor_user_id")
+  seq           BigInt              @id @default(autoincrement())
+  id            String              @unique @default(uuid()) @db.Uuid
+  occurredAt    DateTime            @default(now()) @map("occurred_at")
+  actorUserId   String?             @map("actor_user_id") @db.Uuid
   /// USER | SYSTEM | SCHEDULER | BROKER_WEBHOOK
-  actorType     String   @default("USER") @map("actor_type")
-  actorLabel    String? @map("actor_label")
+  actorType     String              @default("USER") @map("actor_type")
+  actorLabel    String?             @map("actor_label")
   action        String
-  entityType    String? @map("entity_type")
-  entityId      String? @map("entity_id")
-  portfolioId   String?  @db.Uuid @map("portfolio_id")
-  clientId      String?  @db.Uuid @map("client_id")
-  correlationId String? @map("correlation_id")
+  entityType    String?             @map("entity_type")
+  entityId      String?             @map("entity_id")
+  portfolioId   String?             @map("portfolio_id") @db.Uuid
+  clientId      String?             @map("client_id") @db.Uuid
+  correlationId String?             @map("correlation_id")
   environment   TradingEnvironment?
-  beforeValue   Json? @map("before_value")
-  afterValue    Json? @map("after_value")
+  beforeValue   Json?               @map("before_value")
+  afterValue    Json?               @map("after_value")
   metadata      Json?
   ip            String?
-  userAgent     String? @map("user_agent")
-  sessionId     String? @map("session_id")
+  userAgent     String?             @map("user_agent")
+  sessionId     String?             @map("session_id")
   /// Hash of the previous row in the chain (null for the genesis row).
-  prevHash      String? @map("prev_hash")
+  prevHash      String?             @map("prev_hash")
   hash          String
 
   actor     User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)

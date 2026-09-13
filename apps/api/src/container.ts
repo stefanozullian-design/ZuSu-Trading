@@ -20,6 +20,7 @@ import { JournalService } from './modules/journal/journal.service.js';
 import { NotificationService } from './modules/notifications/notification.service.js';
 import { ReconciliationService } from './modules/broker/reconciliation.service.js';
 import { AutomationService } from './modules/automation/automation.service.js';
+import { PositionImportService } from './modules/portfolios/position-import.service.js';
 import { LiveReadinessService } from './modules/automation/live-readiness.js';
 import { RiskEngine } from './modules/risk/risk-engine.js';
 import { OrderService } from './modules/orders/order.service.js';
@@ -66,6 +67,7 @@ export interface AppContainer {
   notifications: NotificationService;
   risk: RiskEngine;
   reconciliation: ReconciliationService;
+  positionImport: PositionImportService;
   readiness: LiveReadinessService;
   automation: AutomationService;
   ws: WebSocketGateway;
@@ -119,6 +121,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   // No key means a provider that refuses, not one that invents an answer: a
   // fabricated analysis is worse than none, because a reader cannot tell.
   const analysisKey = config().ANTHROPIC_API_KEY;
+  const positionImport = new PositionImportService(db, access, audit);
   const readiness = new LiveReadinessService(db, brokers);
   const automation = new AutomationService(db, access, audit, readiness, orders);
   const analysis = new AnalysisService(
@@ -156,6 +159,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     notifications,
     risk,
     reconciliation,
+    positionImport,
     readiness,
     automation,
     ws,
