@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { UNASSIGNED } from '@/hooks/useOwnerFilter';
-import { cn } from '@/lib/utils';
 import type { Owner, PortfolioObjective } from '@/lib/types';
 
 /**
@@ -56,7 +55,14 @@ export function useOwners(): { owners: Owner[]; canSee: boolean } {
   return { owners: data ?? [], canSee };
 }
 
-/** A row of buttons: everyone, each owner, and the unassigned ones. */
+/**
+ * Chooses whose portfolios to look at.
+ *
+ * A dropdown rather than a row of buttons: three owners fit on a line and ten
+ * do not, and this is a list that only grows. Adding an owner lives inside the
+ * same control, because "the person I want is not in this list" is a thought
+ * people have while looking at the list.
+ */
 export function OwnerFilter({
   ownerId,
   onChange,
@@ -64,41 +70,93 @@ export function OwnerFilter({
   ownerId: string | null;
   onChange: (id: string | null) => void;
 }) {
+  const { can } = useAuth();
   const { owners, canSee } = useOwners();
+  const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  // Nothing to filter by. One owner and no unassigned portfolios is the
-  // single-person case, where a filter row is furniture.
+  const create = useMutation({
+    mutationFn: () => api<Owner>('/api/clients', { method: 'POST', body: { name: name.trim() } }),
+    onSuccess: async (owner) => {
+      setError(null);
+      setName('');
+      setAdding(false);
+      await queryClient.invalidateQueries({ queryKey: ['owners'] });
+      onChange(owner.id);
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
   if (!canSee || owners.length === 0) return null;
 
-  const option = (label: string, value: string | null, count?: number) => (
-    <button
-      key={label}
-      type="button"
-      onClick={() => onChange(value)}
-      className={cn(
-        'shrink-0 rounded-full border px-3 py-1 text-xs transition-colors',
-        ownerId === value
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-border text-muted-foreground hover:bg-muted',
-      )}
-    >
-      {label}
-      {count === undefined ? null : <span className="ml-1.5 tabular-nums opacity-60">{count}</span>}
-    </button>
-  );
+  if (adding) {
+    return (
+      <div className="flex flex-wrap items-end gap-1.5">
+        <label className="block space-y-1">
+          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+            New owner
+          </span>
+          <Input
+            id="owner-filter-new"
+            className="h-8 w-56 text-xs"
+            aria-label="New owner name"
+            placeholder="Their name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={name.trim().length < 2 || create.isPending}
+          onClick={() => create.mutate()}
+        >
+          Add
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+          Cancel
+        </Button>
+        {error && <span className="text-[11px] text-red-400">{error}</span>}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[10px] uppercase tracking-wider text-muted-foreground">Owner</span>
-      {option('Everyone', null)}
-      {owners.map((owner) => option(owner.name, owner.id, owner.portfolioCount))}
-      {/*
-        Always offered, even when every portfolio currently has an owner: it is
-        how a person finds the one they forget to assign tomorrow, and a filter
-        that hides its own blind spot is worse than no filter.
-      */}
-      {option('Unassigned', UNASSIGNED)}
-    </div>
+    <label className="flex flex-wrap items-center gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Owner</span>
+      <select
+        id="owner-filter"
+        // Distinct from the "Owner" field on the create form: two controls
+        // with the same accessible name are ambiguous to a screen reader in
+        // exactly the way they are ambiguous to a test.
+        aria-label="Owner filter"
+        className="h-8 min-w-48 rounded-md border border-border bg-background px-2 text-xs"
+        value={ownerId ?? ''}
+        onChange={(e) => {
+          if (e.target.value === '__new') {
+            setAdding(true);
+            return;
+          }
+          onChange(e.target.value === '' ? null : e.target.value);
+        }}
+      >
+        <option value="">Everyone</option>
+        {owners.map((owner) => (
+          <option key={owner.id} value={owner.id}>
+            {owner.name} ({owner.portfolioCount})
+          </option>
+        ))}
+        {/*
+          Always offered, even when every portfolio currently has an owner: it
+          is how a person finds the one they forget to assign tomorrow, and a
+          filter that hides its own blind spot is worse than no filter.
+        */}
+        <option value={UNASSIGNED}>Unassigned</option>
+        {can('client:write') && <option value="__new">+ Add a new owner…</option>}
+      </select>
+    </label>
   );
 }
 

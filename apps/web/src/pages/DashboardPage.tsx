@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pencil, Plus, Users, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, explainApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
+import { usePortfolios } from '@/hooks/usePortfolios';
+import { useViewedPortfolios } from '@/hooks/useViewedPortfolios';
+import { CombinedView } from '@/components/CombinedView';
 import { UNASSIGNED, useOwnerFilter } from '@/hooks/useOwnerFilter';
 import { OBJECTIVE_TITLES, ObjectivePicker, OwnerFilter, OwnerPicker } from '@/components/Owners';
 import { KillSwitch } from '@/components/KillSwitch';
@@ -19,29 +22,31 @@ import type { AutomationConfig, PortfolioObjective, PortfolioSummary } from '@/l
 
 export function DashboardPage() {
   const [showClosed, setShowClosed] = useState(false);
-  const { ownerId, setOwnerId, query: ownerQuery } = useOwnerFilter();
+  const { ownerId, setOwnerId } = useOwnerFilter();
 
-  const {
-    data: portfolios,
-    isLoading,
-    error,
-  } = useQuery({
-    // The owner filter is part of the key: without it, switching owner would
-    // show the previous person's portfolios from cache until the refetch
-    // landed — someone else's book under the name you just chose.
-    queryKey: ['portfolios', showClosed, ownerId],
-    queryFn: () =>
-      api<PortfolioSummary[]>(
-        `/api/portfolios?includeClosed=${showClosed ? 'true' : 'false'}${ownerQuery}`,
-      ),
-    refetchInterval: 15_000,
-  });
+  const { portfolios, isLoading, error } = usePortfolios({ includeClosed: showClosed });
 
   // Shared with every other page, so clicking through to Trading keeps the
-  // book you were looking at.
+  // book you were looking at. Still exactly one: every page that commits
+  // anything deals with a single portfolio, and this is the one it will use.
   const { selectedId, select: setSelectedId } = useSelectedPortfolio(portfolios);
 
-  const selected = portfolios?.find((p) => p.id === selectedId) ?? null;
+  // The dashboard alone may show several at once. Looking at a person's books
+  // together is a reasonable way to answer "how are they doing"; acting on
+  // several at once is not, which is why this stops here.
+  const { viewedIds, toggle, only, isViewed } = useViewedPortfolios(portfolios);
+
+  const viewed = (portfolios ?? []).filter((p) => viewedIds.includes(p.id));
+
+  // The book the other pages will use follows the one being looked at here.
+  // Left to drift, clicking through to Trading would land on a different
+  // portfolio from the one on screen — which is precisely the mistake the
+  // owner scoping exists to prevent, arriving by another route.
+  useEffect(() => {
+    const first = viewed[0];
+    if (first && first.id !== selectedId) setSelectedId(first.id);
+  }, [viewed, selectedId, setSelectedId]);
+  const single = viewed.length === 1 ? viewed[0]! : null;
 
   if (isLoading) {
     return <p className="p-6 text-sm text-muted-foreground">Loading portfolios…</p>;
@@ -87,10 +92,21 @@ export function DashboardPage() {
             <button
               key={portfolio.id}
               type="button"
-              onClick={() => setSelectedId(portfolio.id)}
+              aria-pressed={isViewed(portfolio.id)}
+              // A plain click means "just this one", which is what a click on
+              // a list almost always means. Ctrl or ⌘ adds to the view — the
+              // same gesture every file list has used for thirty years.
+              onClick={(event) => {
+                if (event.ctrlKey || event.metaKey) {
+                  toggle(portfolio.id);
+                } else {
+                  only(portfolio.id);
+                  setSelectedId(portfolio.id);
+                }
+              }}
               className={cn(
                 'shrink-0 rounded-md border px-3 py-1.5 text-left text-sm transition-colors',
-                portfolio.id === selectedId
+                isViewed(portfolio.id)
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border text-muted-foreground hover:bg-muted',
               )}
@@ -127,12 +143,33 @@ export function DashboardPage() {
           at, which reads as the creation having failed.
         */}
         <NewPortfolio defaultOwnerId={ownerId === UNASSIGNED ? null : ownerId} />
-        {selected && <ManagePortfolio portfolio={selected} />}
+        {single && <ManagePortfolio portfolio={single} />}
+        {portfolios.length > 1 && (
+          <span className="text-[11px] text-muted-foreground">
+            {viewed.length > 1
+              ? `Showing ${String(viewed.length)} portfolios together.`
+              : 'Ctrl-click (⌘ on a Mac) to show more than one together.'}
+          </span>
+        )}
+        {viewed.length > 1 && (
+          <button
+            type="button"
+            className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => {
+              only(viewed[0]!.id);
+              setSelectedId(viewed[0]!.id);
+            }}
+          >
+            Show just one
+          </button>
+        )}
       </div>
 
-      {selected && (
+      {viewed.length > 1 && <CombinedView portfolios={viewed} />}
+
+      {single && (
         <>
-          <PortfolioStats portfolio={selected} />
+          <PortfolioStats portfolio={single} />
 
           {/*
             Panel order is the order a trader needs them in (§73): P&L, open
@@ -142,13 +179,13 @@ export function DashboardPage() {
           */}
           <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
             <div className="space-y-4 lg:col-span-2">
-              <PositionsTable portfolioId={selected.id} />
-              <ApprovalsPanel portfolioId={selected.id} />
+              <PositionsTable portfolioId={single.id} />
+              <ApprovalsPanel portfolioId={single.id} />
             </div>
 
             <div className="space-y-4 lg:sticky lg:top-16">
-              <KillSwitch portfolio={selected} />
-              <RiskMonitor portfolioId={selected.id} />
+              <KillSwitch portfolio={single} />
+              <RiskMonitor portfolioId={single.id} />
               <SystemHealthPanel />
             </div>
           </div>

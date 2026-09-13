@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { ACCOUNTS, signIn, signInAdmin, signOut } from './helpers';
 
 test.describe('signing in', () => {
@@ -115,22 +115,16 @@ test.describe('the dashboard', () => {
     // own books, a parent's, split by what each is for. Two of them may
     // reasonably be called "Retirement", so the name alone stops identifying a
     // book and the owner has to be on screen beside it.
-    await expect(page.getByRole('button', { name: /^Everyone$/ })).toBeVisible();
-    const owner = page.getByRole('button', { name: /Demo Client/ }).first();
-    await expect(owner).toBeVisible();
+    const filter = page.getByLabel('Owner filter');
+    await expect(filter).toBeVisible();
 
-    await page.getByRole('button', { name: /new portfolio/i }).click();
-    await page.getByLabel('Portfolio name').fill('E2E Unowned Book');
-    await page.getByLabel('Starting cash').fill('4000');
-    await Promise.all([
-      page.waitForResponse(
-        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
-      ),
-      page.getByRole('button', { name: /create it/i }).click(),
-    ]);
+    await makePortfolio(page, 'E2E Unowned Book', '4000');
 
     // Filtered to a person, a portfolio belonging to nobody is not theirs.
-    await Promise.all([page.waitForResponse((r) => r.url().includes('ownerId=')), owner.click()]);
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('ownerId=')),
+      selectOwner(page, /Demo Client/),
+    ]);
     await expect(page.getByRole('button', { name: /E2E Unowned Book/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Demo Portfolio/ })).toBeVisible();
 
@@ -138,24 +132,18 @@ test.describe('the dashboard', () => {
     // portfolio somebody forgot to assign is lost the moment they filter.
     await Promise.all([
       page.waitForResponse((r) => r.url().includes('ownerId=none')),
-      page.getByRole('button', { name: /^Unassigned$/ }).click(),
+      filter.selectOption('none'),
     ]);
     await expect(page.getByRole('button', { name: /E2E Unowned Book/ })).toBeVisible();
   });
 
   test('creates a portfolio for whoever is filtered, not for nobody', async ({ page }) => {
-    const owner = page.getByRole('button', { name: /Demo Client/ }).first();
-    await Promise.all([page.waitForResponse((r) => r.url().includes('ownerId=')), owner.click()]);
-
-    await page.getByRole('button', { name: /new portfolio/i }).click();
-    await page.getByLabel('Portfolio name').fill('E2E Filtered Create');
-    await page.getByLabel('Starting cash').fill('3000');
     await Promise.all([
-      page.waitForResponse(
-        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
-      ),
-      page.getByRole('button', { name: /create it/i }).click(),
+      page.waitForResponse((r) => r.url().includes('ownerId=')),
+      selectOwner(page, /Demo Client/),
     ]);
+
+    await makePortfolio(page, 'E2E Filtered Create', '3000');
 
     // Creating it unassigned would make it vanish from the list being looked
     // at, which reads as the creation having failed.
@@ -217,8 +205,60 @@ test.describe('the dashboard', () => {
 
     // Saying whose money is under management is an administrative act: someone
     // who could invent an owner could quietly move a book to one.
-    await expect(page.getByLabel('Owner')).toBeVisible();
+    await expect(page.getByLabel('Owner', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /^New$/ })).toHaveCount(0);
+  });
+
+  test('shows several portfolios together, and adds them up', async ({ page }) => {
+    await makePortfolio(page, 'E2E Together A', '40000');
+    await makePortfolio(page, 'E2E Together B', '60000');
+
+    await page.getByRole('button', { name: /E2E Together A/ }).click();
+    await page.getByRole('button', { name: /E2E Together B/ }).click({ modifiers: ['Control'] });
+
+    await expect(page.getByRole('heading', { name: /portfolios together/i })).toBeVisible();
+    // 40,000 and 60,000 of cash, added exactly.
+    await expect(page.getByText('$100,000.00').first()).toBeVisible();
+  });
+
+  test('offers no way to act on several portfolios at once', async ({ page }) => {
+    await makePortfolio(page, 'E2E NoAct A', '1000');
+
+    await page.getByRole('button', { name: /E2E NoAct A/ }).click();
+    await page.getByRole('button', { name: /Demo Portfolio/ }).click({ modifiers: ['Control'] });
+
+    await expect(page.getByRole('heading', { name: /portfolios together/i })).toBeVisible();
+    // The kill switch halts one book. A control that did not name exactly one
+    // would be the most dangerous thing on this screen, so combining is a way
+    // of looking and never a way of acting.
+    await expect(page.getByRole('button', { name: /stop all trading/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /owner & purpose/i })).toHaveCount(0);
+    await expect(page.getByText(/one portfolio at a time/i)).toBeVisible();
+  });
+
+  test('never reports a total it does not know', async ({ page }) => {
+    await makePortfolio(page, 'E2E NoSnapshot', '7000');
+
+    await page.getByRole('button', { name: /E2E NoSnapshot/ }).click();
+    await page.getByRole('button', { name: /Demo Portfolio/ }).click({ modifiers: ['Control'] });
+
+    // A brand-new portfolio has no prior snapshot, so there is no combined
+    // day. The sum of the ones that do have snapshots is not the total — it is
+    // a smaller number wearing the total's label.
+    await expect(page.getByText(/no earlier snapshot/i)).toBeVisible();
+  });
+
+  test('does not put one person\u2019s name on another person\u2019s money', async ({ page }) => {
+    await makePortfolio(page, 'E2E Unowned Total', '1000');
+
+    // Demo Portfolio has an owner; the one just made has none.
+    await page.getByRole('button', { name: /E2E Unowned Total/ }).click();
+    await page.getByRole('button', { name: /Demo Portfolio/ }).click({ modifiers: ['Control'] });
+
+    // Taking the first portfolio's owner for the heading attributed one
+    // person's money to another the moment a selection crossed owners.
+    await expect(page.getByText(/2 owners/i)).toBeVisible();
+    await expect(page.getByText(/belong to different people/i)).toBeVisible();
   });
 
   test('keeps the chosen portfolio when you change page', async ({ page }) => {
@@ -309,3 +349,24 @@ test.describe('the administrator', () => {
     await expect(page.getByRole('listitem').first()).toBeVisible();
   });
 });
+
+/** Makes a portfolio through the page, the way a person would. */
+async function makePortfolio(page: Page, name: string, cash: string): Promise<void> {
+  await page.getByRole('button', { name: /new portfolio/i }).click();
+  await page.getByLabel('Portfolio name').fill(name);
+  await page.getByLabel('Starting cash').fill(cash);
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+    ),
+    page.getByRole('button', { name: /create it/i }).click(),
+  ]);
+}
+
+/** Chooses an owner in the filter, which is a dropdown rather than buttons. */
+async function selectOwner(page: Page, name: RegExp): Promise<void> {
+  const filter = page.getByLabel('Owner filter');
+  const label = (await filter.locator('option').allInnerTexts()).find((t) => name.test(t));
+  if (label === undefined) throw new Error(`no owner option matching ${String(name)}`);
+  await filter.selectOption({ label });
+}

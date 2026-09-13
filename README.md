@@ -203,6 +203,23 @@ Assigning a portfolio to an owner is a manager's job; registering a new owner
 needs `client:write`, which is administrator-only. Someone who could invent an
 owner could quietly move a book to one.
 
+Choosing an owner scopes **every** page, not just the dashboard — a Trading
+selector offering your own book while you are thinking about a relative's is a
+way to commit the wrong one.
+
+On the dashboard alone, ctrl-click (⌘ on a Mac) shows several portfolios
+together: one set of totals, the positions merged with a column saying which
+book each came from, and each portfolio's own figures beneath. Two quantities
+are deliberately absent rather than computed. Any total containing an unknown
+is left blank and explained, because the sum of what could be marked is not
+the total — it is a smaller number wearing the total's label. And there is no
+combined "risk used": that is a percentage of _one_ portfolio's loss limit, so
+two portfolios at 50% are not one at 100%, or 50%, or any number at all.
+
+Combining is a way of looking and never a way of acting. The kill switch, the
+approval queue and the risk monitor all name exactly one portfolio, and none
+of them appears in the combined view.
+
 ### The Trading page
 
 `/trading` is where the platform's premise is visible. A live strategy produces

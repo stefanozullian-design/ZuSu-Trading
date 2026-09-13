@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
+import { usePortfolios } from '@/hooks/usePortfolios';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -16,7 +17,6 @@ import type {
   GateDecision,
   NotificationRow,
   OrderRow,
-  PortfolioSummary,
   PositionWithLots,
   SignalRow,
 } from '@/lib/types';
@@ -44,10 +44,10 @@ export function TradingPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const canAnalyse = can('strategy:write');
 
-  const { data: portfolios } = useQuery({
-    queryKey: ['portfolios'],
-    queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
-  });
+  // Scoped to the owner chosen on the dashboard. A selector that offered
+  // every book while a person was thinking about one relative's is a way to
+  // commit the wrong one, and this is a page where that costs money.
+  const { portfolios } = usePortfolios();
 
   const { selectedId: id, select: setPortfolioId } = useSelectedPortfolio(portfolios);
 
