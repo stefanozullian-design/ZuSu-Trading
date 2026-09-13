@@ -51,6 +51,29 @@ export function apiHealthUrl(env) {
   return `http://127.0.0.1:${String(apiPort(env))}/api/system/live`;
 }
 
+export function apiVersionUrl(env) {
+  return `http://127.0.0.1:${String(apiPort(env))}/api/system/version`;
+}
+
+/**
+ * Is the ZuSu already running older than the code on disk?
+ *
+ * The case this catches is the quiet one: update, then click the icon, and the
+ * launcher finds a server already answering and simply opens a browser onto
+ * it — serving the code that was current when it started. Everything looks
+ * fine. The new feature is missing and nothing says why.
+ *
+ * Only a definite mismatch is reported. Either side unknown means say nothing:
+ * a warning that fires on missing information teaches people to ignore it.
+ */
+export function staleRunning(running, head) {
+  if (typeof running !== 'string' || typeof head !== 'string') return false;
+  if (running === '' || head === '') return false;
+  // Either may be the shorter form, so compare on the shorter length.
+  const n = Math.min(running.length, head.length);
+  return running.slice(0, n) !== head.slice(0, n);
+}
+
 /**
  * Turns a failure into something a person can act on.
  *
@@ -195,6 +218,30 @@ function reportUpdates() {
   );
 }
 
+/** The commit the already-running server reports, or null. */
+async function runningCommit(env) {
+  try {
+    const response = await fetch(apiVersionUrl(env), { signal: AbortSignal.timeout(3_000) });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return typeof body.commit === 'string' ? body.commit : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The commit on disk, or null outside a checkout. */
+function headCommit() {
+  const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  if (result.error || result.status !== 0) return null;
+  const out = (result.stdout ?? '').trim();
+  return out === '' ? null : out;
+}
+
 async function main() {
   const env = loadEnvFor(root, process.env);
 
@@ -212,7 +259,21 @@ async function main() {
   // Double-clicking the icon twice should not produce a second, competing
   // copy — it should do what the person meant, which is "show me ZuSu".
   if (await answering(webUrl())) {
-    console.log('  ZuSu is already running. Opening it.\n');
+    const running = await runningCommit(env);
+    const head = headCommit();
+
+    if (staleRunning(running, head)) {
+      console.log(
+        `  ZuSu is already running, but it is running older code.\n\n` +
+          `    running:  ${String(running)}\n` +
+          `    on disk:  ${String(head)}\n\n` +
+          '  Close the ZuSu window that is already open, then start it again.\n' +
+          '  Until you do, the page will keep showing the older version.\n',
+      );
+    } else {
+      console.log('  ZuSu is already running. Opening it.\n');
+    }
+
     openBrowser(webUrl());
     return;
   }

@@ -32,6 +32,7 @@ const launcher = (await import(join(repoRoot, 'scripts/start.mjs'))) as {
   webUrl: () => string;
   apiHealthUrl: (env: Record<string, string | undefined>) => string;
   adviceFor: (message: string) => string | null;
+  staleRunning: (running: unknown, head: unknown) => boolean;
 };
 
 describe('the port it opens the browser at', () => {
@@ -158,5 +159,43 @@ describe('stopping it', () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     expect(running(grandchildPid)).toBe(false);
+  });
+});
+
+/**
+ * Catching a ZuSu that is already running older code.
+ *
+ * The quiet failure: update, click the icon, and the launcher finds a server
+ * already answering and opens a browser onto it — serving whatever was current
+ * when it started. Everything looks fine, the new feature is missing, and
+ * nothing says why.
+ */
+describe('an already-running ZuSu', () => {
+  it('is reported as stale when it is running a different commit', () => {
+    expect(launcher.staleRunning('3a64949', '8680853')).toBe(true);
+  });
+
+  it('is not reported when it matches', () => {
+    expect(launcher.staleRunning('8680853', '8680853')).toBe(false);
+  });
+
+  it('matches across different hash lengths', () => {
+    // The server may report seven characters and git eight, or the reverse.
+    // Treating that as a mismatch would cry wolf on every single start.
+    expect(launcher.staleRunning('8680853', '8680853ab')).toBe(false);
+    expect(launcher.staleRunning('8680853ab', '8680853')).toBe(false);
+  });
+
+  it('says nothing when either side is unknown', () => {
+    // A warning that fires on missing information teaches people to ignore it.
+    for (const [a, b] of [
+      [null, '8680853'],
+      ['8680853', null],
+      ['', '8680853'],
+      ['8680853', ''],
+      [undefined, undefined],
+    ]) {
+      expect(launcher.staleRunning(a, b), `${String(a)} vs ${String(b)}`).toBe(false);
+    }
   });
 });

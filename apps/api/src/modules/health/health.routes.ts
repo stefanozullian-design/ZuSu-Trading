@@ -64,7 +64,16 @@ export async function registerSystemRoutes(
   typed.get(
     '/version',
     {
-      preHandler: app.requireAuth,
+      /**
+       * Unauthenticated, deliberately.
+       *
+       * The launcher has no session and needs to ask this before anybody has
+       * signed in — it is how it can tell somebody that the ZuSu already
+       * running is older than the code on disk, which is the one case where
+       * everything looks fine and is not. A short commit hash is not a
+       * credential and grants nothing; the alternative is that the only tool
+       * able to catch a stale server cannot ask it what it is.
+       */
       schema: {
         tags: ['system'],
         summary: 'The commit this server is running',
