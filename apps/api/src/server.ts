@@ -1,6 +1,6 @@
 import { buildApp } from './app.js';
 import { config } from './config/env.js';
-import { assertDatabaseIsCurrent } from './lib/migration-check.js';
+import { assertClientMatchesDatabase, assertDatabaseIsCurrent } from './lib/migration-check.js';
 import { disconnectPrisma } from './lib/prisma.js';
 import { disconnectRedis } from './lib/redis.js';
 import { Scheduler } from './modules/scheduler/scheduler.js';
@@ -13,6 +13,12 @@ async function main(): Promise<void> {
   // that starts perfectly and then fails on one feature, several steps from
   // the cause.
   await assertDatabaseIsCurrent(container.db);
+
+  // And the other direction: a database ahead of the generated client. The
+  // migration applied, the column is there and populated, and the code reading
+  // it never asks for it — so every response carrying that field fails its own
+  // schema and the screen reports a failure that names nothing.
+  await assertClientMatchesDatabase(container.db);
 
   // The scheduler lives with the server rather than the container, because a
   // test that builds the app must not start timers. Nothing it runs can

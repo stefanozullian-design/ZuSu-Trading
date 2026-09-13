@@ -103,6 +103,11 @@ function main() {
   npm('Installing anything new…', ['install'], env);
   npm('Rebuilding the shared code…', ['run', 'build', '-w', '@zusu/shared'], env);
   npm('Updating the database…', ['run', 'db:deploy'], env);
+  // Explicit, not left to npm: when no dependency changed, `npm install` does
+  // no work and does not re-run the install script that would have rebuilt
+  // this. An update carrying only a migration would then leave the code that
+  // reads the database a version behind it.
+  npm('Matching the database tools to it…', ['run', 'db:generate'], env);
 
   console.log('\n  Done. Start ZuSu the usual way — the icon on your desktop.\n');
 }

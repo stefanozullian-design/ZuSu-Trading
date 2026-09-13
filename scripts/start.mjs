@@ -223,6 +223,12 @@ async function main() {
   // 500 that says nothing.
   step('Checking the shared code is up to date…', ['run', 'build', '-w', '@zusu/shared'], env);
   step('Checking the database is up to date…', ['run', 'db:deploy'], env);
+  // `prisma migrate deploy` changes the database and not the code that reads
+  // it. Without this, a migration that adds a column leaves the API querying
+  // the old set: the new field comes back undefined, the response fails its
+  // own schema, and every page that needs it reports a failure that looks
+  // nothing like "a build step was skipped".
+  step('Checking the database tools match it…', ['run', 'db:generate'], env);
 
   console.log('  Starting…\n');
 

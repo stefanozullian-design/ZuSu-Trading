@@ -57,8 +57,9 @@ positions is the wrong kind of surprise on a trading tool. The launcher says
 when newer code exists and leaves the decision alone.
 
 The launcher rebuilds the shared package, applies any migration that arrived
-with a `git pull`, starts both halves, waits for each to answer, and opens a
-browser. It stops on the first failure and explains it in plain words — a
+with a `git pull`, **regenerates the database client** so the code that reads
+the database matches it, starts both halves, waits for each to answer, and
+opens a browser. It stops on the first failure and explains it in plain words — a
 database that is not running, a password that no longer matches, a port already
 taken. The window it runs in is where errors appear; closing it stops ZuSu,
 including the servers underneath, which `npm run dev` historically did not.

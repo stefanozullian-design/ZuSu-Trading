@@ -52,7 +52,22 @@ export function DashboardPage() {
     return <p className="p-6 text-sm text-muted-foreground">Loading portfolios…</p>;
   }
   if (error) {
-    return <p className="p-6 text-sm text-loss">Could not load portfolios.</p>;
+    // The bare sentence was a dead end: it named what failed and nothing about
+    // why, so the only way forward was to guess. The server's own message is
+    // usually the whole answer.
+    return (
+      <div className="mx-auto w-full max-w-2xl space-y-2 p-6">
+        <p className="text-sm text-loss">Could not load portfolios.</p>
+        <p className="rounded-md border border-red-500/30 bg-red-500/5 p-2 text-xs text-red-300">
+          {error instanceof Error ? explainApiError(error) : String(error)}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          If this followed an update, the window ZuSu started in will say more. Closing it and
+          double-clicking the ZuSu icon again re-runs the checks that keep the database and the code
+          that reads it in step.
+        </p>
+      </div>
+    );
   }
   if (!portfolios?.length) {
     return (
