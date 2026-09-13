@@ -28,6 +28,14 @@ test.describe('the dashboard', () => {
     await signIn(page, 'manager');
   });
 
+  test('names the version on screen, so "is this the new one" is answerable', async ({ page }) => {
+    // An old version and a new one look identical until a feature is missing,
+    // and noticing an absence is exactly what people are bad at. The commit
+    // comes from the server, which read it from the checkout at start-up — so
+    // it names what is *running*, not what was last pulled.
+    await expect(page.getByLabel('Running version')).toHaveText(/^[0-9a-f]{7,}/);
+  });
+
   test('says unmistakably that this is the demo environment', async ({ page }) => {
     // The banner exists so nobody can mistake simulated trading for real.
     const banner = page.getByRole('status');
@@ -451,6 +459,10 @@ async function makePortfolio(page: Page, name: string, cash: string): Promise<vo
 /** Chooses an owner in the filter, which is a dropdown rather than buttons. */
 async function selectOwner(page: Page, name: RegExp): Promise<void> {
   const filter = page.getByLabel('Owner filter');
+  // Wait for the roster to arrive before reading the options. Reading them
+  // straight away caught the dropdown before its query resolved, which passed
+  // or failed on timing rather than on anything the test was about.
+  await expect(filter.locator('option').filter({ hasText: name })).toHaveCount(1);
   const label = (await filter.locator('option').allInnerTexts()).find((t) => name.test(t));
   if (label === undefined) throw new Error(`no owner option matching ${String(name)}`);
   await filter.selectOption({ label });

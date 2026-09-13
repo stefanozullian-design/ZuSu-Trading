@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { ENVIRONMENTS, Permission, systemHealthSchema } from '@zusu/shared';
 import { config } from '../../config/env.js';
+import { buildInfo } from '../../lib/build-info.js';
 import type { AppContainer } from '../../container.js';
 
 export async function registerSystemRoutes(
@@ -58,6 +59,29 @@ export async function registerSystemRoutes(
       },
     },
     async (_request, reply) => reply.send(await container.health.snapshot()),
+  );
+
+  typed.get(
+    '/version',
+    {
+      preHandler: app.requireAuth,
+      schema: {
+        tags: ['system'],
+        summary: 'The commit this server is running',
+        description:
+          'Read from the checkout at start-up, not from a constant somebody has to remember to ' +
+          'bump. Null outside a git checkout, because inventing a version would defeat the only ' +
+          'thing this answers.',
+        response: {
+          200: z.object({
+            commit: z.string().nullable(),
+            committedAt: z.string().nullable(),
+            modified: z.boolean(),
+          }),
+        },
+      },
+    },
+    async (_request, reply) => reply.send(buildInfo()),
   );
 
   typed.get(

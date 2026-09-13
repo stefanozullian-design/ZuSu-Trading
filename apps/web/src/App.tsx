@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { BuildBadge } from '@/components/BuildBadge';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -146,6 +147,7 @@ function Shell() {
               )}
               {status === 'open' ? 'live' : status}
             </span>
+            <BuildBadge />
             <span className="hidden text-xs text-muted-foreground sm:inline">
               {user?.displayName} · {user?.role}
             </span>
