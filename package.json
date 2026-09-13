@@ -13,7 +13,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "build": "npm run build -w @zusu/shared && npm run build -w @zusu/api && npm run build -w @zusu/web",
-    "dev": "node scripts/with-env.mjs npm run dev -w @zusu/api & node scripts/with-env.mjs npm run dev -w @zusu/web",
+    "dev": "node scripts/dev.mjs",
     "dev:api": "node scripts/with-env.mjs npm run dev -w @zusu/api",
     "dev:web": "node scripts/with-env.mjs npm run dev -w @zusu/web",
     "typecheck": "npm run typecheck -w @zusu/shared && npm run typecheck -w @zusu/api && npm run typecheck -w @zusu/web && tsc -p e2e/tsconfig.json --noEmit",

@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
-const { parseEnvFile, envWithFile } = (await import(join(repoRoot, 'scripts/with-env.mjs'))) as {
+const { parseEnvFile, envWithFile } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
   parseEnvFile: (contents: string) => Record<string, string>;
   envWithFile: (
     base: Record<string, string | undefined>,
@@ -45,6 +45,17 @@ describe('envWithFile', () => {
   it('never overrides a variable already set', () => {
     const merged = envWithFile({ DATABASE_URL: 'from-ci' }, 'DATABASE_URL=from-dotenv');
     expect(merged.DATABASE_URL).toBe('from-ci');
+  });
+});
+
+describe('npmCommand', () => {
+  it('spells npm the way the current platform can spawn it', async () => {
+    const { npmCommand } = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
+      npmCommand: () => string;
+    };
+    // `spawn('npm')` without a shell is ENOENT on Windows, which reads like npm
+    // is missing rather than merely spelled differently.
+    expect(npmCommand()).toBe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
   });
 });
 
