@@ -37,9 +37,11 @@ async function main(): Promise<void> {
 
   const planned = symbols ?? (await container.marketDataSync.syncableSymbols());
   const minutes = Math.ceil((planned.length * pacingMs) / 60_000);
+  const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
 
   console.log(
-    `\nSyncing ${timeframe} bars for ${String(planned.length)} symbols, ${String(days)} days back.`,
+    `\nSyncing ${timeframe} bars for ${String(planned.length)} ` +
+      `${plural(planned.length, 'symbol', 'symbols')}, ${String(days)} days back.`,
   );
   console.log(
     `Pacing at one request every ${String(Math.round(pacingMs / 1000))}s to stay inside the ` +

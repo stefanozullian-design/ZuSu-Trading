@@ -1,0 +1,23 @@
+{
+  // Typechecking covers more than the build does.
+  //
+  // The build config includes only `src`, because that is all it emits. But
+  // `scripts/` and `prisma/seed.ts` are run by real people — `npm run setup`
+  // executes both — and being outside the check meant a script could reference
+  // an undefined variable, pass `npm run typecheck`, pass lint, and then crash
+  // the first time somebody ran it. Which is exactly what happened.
+  //
+  // Test files are still excluded: they carry ~150 strict-index complaints that
+  // are safe at runtime, and cleaning them is its own piece of work rather than
+  // a reason to leave the scripts unchecked in the meantime.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "noEmit": true
+  },
+  "include": ["src/**/*", "scripts/**/*", "prisma/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}
