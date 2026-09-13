@@ -81,7 +81,9 @@ beforeEach(async () => {
   sync = new MarketDataSyncService(db, providers, quality, calendar);
 
   await db.instrument.create({
-    data: { symbol: 'AAPL', name: 'Apple', exchange: 'XNYS', sector: 'Technology' },
+    // 'DEMO' on purpose: it is what the seed writes, and it is what exposed
+    // the bug this suite now pins.
+    data: { symbol: 'AAPL', name: 'Apple', exchange: 'DEMO', sector: 'Technology' },
   });
   await db.instrument.create({
     data: { symbol: 'MSFT', name: 'Microsoft', exchange: 'XNYS', sector: 'Technology' },
@@ -176,5 +178,107 @@ describe('syncing real bars', () => {
     useProvider(fakeProvider({ candles: dailyBars('AAPL', 2) }));
     const symbols = await sync.syncableSymbols();
     expect(symbols).toEqual(['AAPL', 'MSFT']);
+  });
+});
+
+/**
+ * Weekends and public holidays are not missing data.
+ *
+ * The first real sync produced 96 findings across eight symbols — every
+ * weekend and every market holiday reported as dropped bars. The cause was a
+ * confusion between two different things: the *exchange* an instrument is
+ * listed on, and the *market calendar* that governs its hours. The seed lists
+ * everything on an exchange called "DEMO", no calendar exists under that name,
+ * and a resolver with no calendar refuses to claim the market was shut —
+ * correctly, and conservatively, and in this case wrongly, because the calendar
+ * it needed was sitting there under a different code.
+ */
+describe('gaps a trading calendar explains', () => {
+  /** Weekday-only daily bars stamped at midnight New York, as a provider sends them. */
+  function tradingDayBars(symbol: string, firstDay: string, count: number): ProviderCandle[] {
+    const bars: ProviderCandle[] = [];
+    const cursor = new Date(`${firstDay}T04:00:00.000Z`);
+    while (bars.length < count) {
+      const weekday = cursor.getUTCDay();
+      if (weekday !== 0 && weekday !== 6) {
+        const price = 100 + bars.length;
+        bars.push({
+          symbol,
+          timeframe: '1d',
+          openTime: new Date(cursor),
+          closeTime: new Date(cursor.getTime() + 86_400_000),
+          open: dec(price),
+          high: dec(price + 1),
+          low: dec(price - 1),
+          close: dec(price + 0.5),
+          volume: dec(1_000_000),
+          vwap: null,
+          tradeCount: 5_000,
+          isAdjusted: true,
+        });
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return bars;
+  }
+
+  it('does not report a weekend as dropped bars', async () => {
+    const bars = tradingDayBars('AAPL', '2026-06-15', 40);
+    useProvider(fakeProvider({ candles: bars }));
+
+    const run = await sync.sync({
+      symbols: ['AAPL'],
+      timeframe: '1d',
+      pacingMs: 0,
+      to: bars[bars.length - 1]!.openTime,
+      days: 60,
+    });
+
+    expect(run.results[0]?.findings).toEqual([]);
+    expect(run.results[0]?.status).toBe('STORED');
+  });
+
+  it('does not report a public holiday as dropped bars', async () => {
+    // The window spans Juneteenth (19 June 2026) and Independence Day
+    // observed (3 July 2026) — two of the gaps in the original report.
+    const bars = tradingDayBars('AAPL', '2026-06-15', 40).filter(
+      (bar) =>
+        !bar.openTime.toISOString().startsWith('2026-06-19') &&
+        !bar.openTime.toISOString().startsWith('2026-07-03'),
+    );
+    useProvider(fakeProvider({ candles: bars }));
+
+    const run = await sync.sync({
+      symbols: ['AAPL'],
+      timeframe: '1d',
+      pacingMs: 0,
+      to: bars[bars.length - 1]!.openTime,
+      days: 60,
+    });
+
+    expect(run.results[0]?.findings).toEqual([]);
+  });
+
+  it('still reports a genuine hole on a trading day', async () => {
+    // A Tuesday removed from the middle of a normal week is missing data, and
+    // the fix above must not have bought its silence.
+    const bars = tradingDayBars('AAPL', '2026-06-15', 40).filter(
+      (bar) => !bar.openTime.toISOString().startsWith('2026-06-23'),
+    );
+    useProvider(fakeProvider({ candles: bars }));
+
+    const run = await sync.sync({
+      symbols: ['AAPL'],
+      timeframe: '1d',
+      pacingMs: 0,
+      to: bars[bars.length - 1]!.openTime,
+      days: 60,
+    });
+
+    // The message names the bars either side of the hole, which is what a
+    // reader needs in order to go and look.
+    expect(run.results[0]?.findings.join(' ')).toContain('2026-06-22');
+    expect(run.results[0]?.findings.join(' ')).toContain('2026-06-24');
+    expect(run.results[0]?.status).toBe('REJECTED');
   });
 });

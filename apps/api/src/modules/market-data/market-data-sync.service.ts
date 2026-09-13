@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
+import type { AssetClass } from '@zusu/shared';
+import { marketCodeFor } from './calendar.js';
 import { MarketDataError, type Timeframe } from './types.js';
 import type { MarketDataProviderRegistry } from './provider-registry.js';
 import type { MarketDataQualityService } from './quality.service.js';
@@ -185,18 +187,32 @@ export class MarketDataSyncService {
       };
     }
 
-    // The instrument's own market decides what counts as a gap. A hole
-    // spanning a weekend is not missing data; the same hole on a Tuesday is.
+    // Which trading calendar applies — not where the instrument is listed.
+    //
+    // These are different things and conflating them produced a flood of false
+    // findings: the seed lists every demo instrument on an exchange called
+    // "DEMO", no calendar exists under that name, and a resolver with no
+    // calendar correctly refuses to claim the market was shut. Every weekend
+    // and every public holiday was then reported as missing bars.
+    //
+    // `marketCodeFor` is the mapping the rest of the platform already uses,
+    // and it sends an equity on an unrecognised venue to NYSE hours.
     const instrument = await this.db.instrument.findUnique({
       where: { symbol },
-      select: { exchange: true },
+      select: { exchange: true, assetClass: true },
     });
-    const isSessionGap = await this.calendar.gapResolverFor(
-      instrument?.exchange ?? 'XNYS',
-      timeframe,
-      from,
-      to,
+    const marketCode = marketCodeFor(
+      (instrument?.assetClass ?? 'EQUITY') as AssetClass,
+      instrument?.exchange,
     );
+
+    // The calendar has to cover the window before gaps in it can be judged.
+    // Without this a sync reaching further back than the calendar goes gets
+    // judged leniently rather than correctly — no rows for a date means no
+    // tradable time, which excuses a genuine hole as readily as a weekend.
+    await this.calendar.sync(marketCode, from, to);
+
+    const isSessionGap = await this.calendar.gapResolverFor(marketCode, timeframe, from, to);
     const result = await this.quality.ingestCandles(candles, {
       provider: providerName,
       isSessionGap,

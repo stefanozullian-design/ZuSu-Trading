@@ -118,22 +118,45 @@ describe('sync', () => {
     expect(half.afterHoursClose).toBeNull();
   });
 
-  it('is idempotent and corrects a day it learns more about later', async () => {
+  it('knows the scheduled holidays without being told', async () => {
+    // This asserted the opposite until real data proved it wrong: a generated
+    // calendar had no holidays in it, so a sync of any past window reported
+    // every closure as a day the market was open and sent no bars.
     await calendar.sync('XNYS', day('2026-11-26'), day('2026-11-26'));
+
+    const thursday = await db.marketCalendarDay.findFirstOrThrow();
+    expect(thursday.isTradingDay).toBe(false);
+    expect(thursday.holidayName).toBe('Thanksgiving Day');
+  });
+
+  it('is idempotent and still lets a provider correct a day', async () => {
+    // An unscheduled closure — a hurricane, a funeral, a systems failure — is
+    // exactly what the table cannot know, so a provider row still wins.
+    await calendar.sync('XNYS', day('2026-07-13'), day('2026-07-13'));
     const before = await db.marketCalendarDay.findFirstOrThrow();
-    expect(before.isTradingDay).toBe(true); // a Thursday, no holiday known yet
+    expect(before.isTradingDay).toBe(true); // an ordinary Monday
 
     await calendar.sync(
       'XNYS',
-      day('2026-11-26'),
-      day('2026-11-26'),
-      providerReturning(thanksgiving),
+      day('2026-07-13'),
+      day('2026-07-13'),
+      providerReturning([
+        {
+          marketCode: 'XNYS',
+          date: day('2026-07-13'),
+          isTradingDay: false,
+          regularOpen: null,
+          regularClose: null,
+          isEarlyClose: false,
+          holidayName: 'Unscheduled closure',
+        },
+      ]),
     );
 
     expect(await db.marketCalendarDay.count()).toBe(1);
     const after = await db.marketCalendarDay.findFirstOrThrow();
     expect(after.isTradingDay).toBe(false);
-    expect(after.holidayName).toBe('Thanksgiving Day');
+    expect(after.holidayName).toBe('Unscheduled closure');
   });
 
   it('rejects a market it has no definition for', async () => {

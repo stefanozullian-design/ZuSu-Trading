@@ -11,6 +11,7 @@ import {
   type CalendarDay,
 } from './calendar.js';
 import { zonedDateParts } from './time-zone.js';
+import { usHolidayIndex } from './us-market-holidays.js';
 import type { MarketDataProvider, ProviderCalendarDay, Timeframe } from './types.js';
 import { TIMEFRAME_MINUTES } from './types.js';
 
@@ -90,9 +91,28 @@ export class MarketCalendarService {
       }
     }
 
+    // Known closures for the years this range spans. A provider row still
+    // wins — a real closure this table does not know about must override a
+    // computed ordinary day — but without the table a historical sync has no
+    // holidays at all, because Massive reports only upcoming ones.
+    const knownHolidays = definition.alwaysOpen ? new Map() : usHolidayIndex(from, to);
+
     let daysWritten = 0;
     for (const date of eachUtcMidnight(from, to)) {
-      const override = overrides.get(isoDateKey(date)) ?? null;
+      const key = isoDateKey(date);
+      const provided = overrides.get(key) ?? null;
+      const known = knownHolidays.get(key);
+      const override =
+        provided ??
+        (known
+          ? {
+              isTradingDay: known.earlyClose === true,
+              regularOpen: null,
+              regularClose: null,
+              isEarlyClose: known.earlyClose === true,
+              holidayName: known.name,
+            }
+          : null);
       const day = buildCalendarDay(definition, date, override);
 
       await this.db.marketCalendarDay.upsert({
@@ -317,6 +337,30 @@ export class MarketCalendarService {
       where: { marketCode, date: { gte: utcMidnight(from), lte: utcMidnight(to) } },
     });
     const days = rows.map(toCalendarDay);
+
+    if (timeframe === '1d') {
+      // Daily bars are counted in sessions, not in milliseconds.
+      //
+      // Every other timeframe measures a bar in tradable minutes, so comparing
+      // tradable time against the bar's interval is sound. A daily bar does
+      // not work that way: its interval is 1440 wall-clock minutes while the
+      // session it covers is about 390 tradable ones. Two whole missing
+      // sessions still fit comfortably inside one day's worth of milliseconds,
+      // so the millisecond comparison excused a genuinely absent trading day
+      // exactly as readily as it excused a weekend.
+      const tradingDates = days
+        .filter((day) => day.isTradingDay)
+        .map((day) => day.date.getTime())
+        .sort((a, b) => a - b);
+
+      return (gapFrom: Date, gapTo: Date): boolean => {
+        if (days.length === 0) return false;
+        const after = utcMidnight(gapFrom).getTime();
+        const before = utcMidnight(gapTo).getTime();
+        // A session strictly between the two bars is a bar that should exist.
+        return !tradingDates.some((date) => date > after && date < before);
+      };
+    }
 
     return (gapFrom: Date, gapTo: Date): boolean => {
       if (days.length === 0) {
