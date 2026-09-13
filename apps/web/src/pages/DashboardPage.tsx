@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Pencil, Plus, Users, X } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, explainApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -654,6 +654,8 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
   const queryClient = useQueryClient();
   const [renaming, setRenaming] = useState(false);
   const [reassigning, setReassigning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
   const [name, setName] = useState(portfolio.name);
   const [error, setError] = useState<string | null>(null);
 
@@ -667,6 +669,22 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
     onSuccess: async () => {
       setError(null);
       setRenaming(false);
+      await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      await queryClient.invalidateQueries({ queryKey: ['owners'] });
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      api<null>(
+        `/api/portfolios/${portfolio.id}?confirmName=${encodeURIComponent(confirmName.trim())}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: async () => {
+      setError(null);
+      setDeleting(false);
+      setConfirmName('');
       await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
       await queryClient.invalidateQueries({ queryKey: ['owners'] });
     },
@@ -721,6 +739,74 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
         </Button>
         {error && <span className="text-[11px] text-red-400">{error}</span>}
       </div>
+    );
+  }
+
+  if (deleting) {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Delete “{portfolio.name}”?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs">
+          <p className="text-[11px] text-muted-foreground">
+            This removes the portfolio and everything that belonged to it — its positions, orders,
+            fills, snapshots and cash flows. It cannot be undone.
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {/*
+              Said plainly, because it is the one thing people assume deleting
+              destroys, and it is the one thing it does not.
+            */}
+            The audit log is not touched. Every entry this portfolio produced stays, and one more is
+            written recording what was deleted and by whom.
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            If you only want it out of the way, <strong>Close</strong> hides it from every list and
+            keeps it reopenable.
+          </p>
+
+          <label className="block space-y-1">
+            <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+              Type its name to confirm
+            </span>
+            <Input
+              id="confirm-delete-portfolio"
+              className="h-8 text-xs"
+              aria-label="Type the portfolio name to confirm deletion"
+              placeholder={portfolio.name}
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+            />
+          </label>
+
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              // Typed exactly, not merely clicked: a confirmation that can be
+              // clicked through without reading is not a confirmation.
+              disabled={confirmName.trim() !== portfolio.name || remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {remove.isPending ? 'Deleting…' : 'Delete permanently'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDeleting(false);
+                setConfirmName('');
+                setError(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -830,6 +916,23 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
           onClick={() => patch.mutate({ isActive: true })}
         >
           Reopen
+        </Button>
+      )}
+
+      {portfolio.environment !== 'LIVE' && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-red-400 hover:text-red-300"
+          onClick={() => {
+            setConfirmName('');
+            setError(null);
+            setDeleting(true);
+          }}
+          title="Removes it and everything in it. The audit log is kept."
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden />
+          Delete
         </Button>
       )}
 

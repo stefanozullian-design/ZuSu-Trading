@@ -230,6 +230,14 @@ export const AuditAction = {
   INSTRUMENT_ADDED: 'INSTRUMENT_ADDED',
   PORTFOLIO_CREATED: 'PORTFOLIO_CREATED',
   PORTFOLIO_MODIFIED: 'PORTFOLIO_MODIFIED',
+  /**
+   * A portfolio removed outright.
+   *
+   * Written immediately before the row goes, and it is what survives: the log
+   * keeps every entry the portfolio ever produced, and this one names what was
+   * deleted, what it held and who asked.
+   */
+  PORTFOLIO_DELETED: 'PORTFOLIO_DELETED',
   PORTFOLIO_ACCESS_GRANTED: 'PORTFOLIO_ACCESS_GRANTED',
   PORTFOLIO_ACCESS_REVOKED: 'PORTFOLIO_ACCESS_REVOKED',
   PORTFOLIO_ACCESS_DENIED: 'PORTFOLIO_ACCESS_DENIED',

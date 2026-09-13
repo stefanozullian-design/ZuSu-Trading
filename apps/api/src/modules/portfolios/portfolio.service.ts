@@ -299,6 +299,84 @@ export class PortfolioService {
     return this.summarise(updated, updated.client);
   }
 
+  /**
+   * Removes a portfolio and everything that belonged to it.
+   *
+   * Offered because the alternative was worse in practice: closing keeps a
+   * portfolio for ever, and an installation used for a while accumulates
+   * experiments that clutter every picker and every filter. A list nobody can
+   * tidy is its own kind of unreliable.
+   *
+   * The record of a deletion survives the deletion. An entry naming the
+   * portfolio, what it held and who asked is written immediately before the
+   * row goes, and every entry the portfolio ever produced stays where it is —
+   * `audit_logs.portfolio_id` keeps the id of something that no longer exists,
+   * which is more honest than blanking it. Tidying a list cannot erase a
+   * trading record, and that property is the one thing this must not cost.
+   *
+   * Two things are refused outright. A LIVE portfolio is a record of real
+   * money and real fills and is never deletable. And the caller must type the
+   * portfolio's name: a confirmation that can be clicked through without
+   * reading is not a confirmation.
+   */
+  async remove(principal: Principal, portfolioId: string, confirmName: string): Promise<void> {
+    const portfolio = await this.access.assertPortfolioAccess(principal, portfolioId, {
+      permission: Permission.PORTFOLIO_WRITE,
+    });
+
+    if (portfolio.environment === TradingEnvironment.LIVE) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'A live portfolio cannot be deleted. It records real money and real fills, and a ' +
+          'trading record is not something this application gets to erase.',
+      );
+    }
+
+    if (confirmName.trim() !== portfolio.name) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        `To delete this portfolio, type its name exactly: ${portfolio.name}`,
+      );
+    }
+
+    const [positions, orders] = await Promise.all([
+      this.db.position.count({ where: { portfolioId, status: 'OPEN' } }),
+      this.db.order.count({ where: { portfolioId } }),
+    ]);
+
+    await this.db.$transaction(async (tx) => {
+      // Before, not after. A failure between the two would otherwise leave a
+      // deletion nobody recorded.
+      await this.audit.record(
+        {
+          action: AuditAction.PORTFOLIO_DELETED,
+          actorUserId: principal.id,
+          entityType: 'Portfolio',
+          entityId: portfolioId,
+          portfolioId,
+          environment: portfolio.environment as TradingEnvironment,
+          before: {
+            name: portfolio.name,
+            environment: portfolio.environment,
+            clientId: portfolio.clientId,
+            objective: portfolio.objective,
+            cashBalance: portfolio.cashBalance.toString(),
+            openPositions: positions,
+            orders,
+          },
+        },
+        tx,
+      );
+
+      // Its positions, orders, executions, snapshots and cash flows go with
+      // it — every one of those tables cascades from the portfolio. The audit
+      // log does not, which is the whole point.
+      await tx.portfolio.delete({ where: { id: portfolioId } });
+    });
+
+    this.brokers.reset();
+  }
+
   async update(
     principal: Principal,
     portfolioId: string,
@@ -524,18 +602,26 @@ function startOfUtcDay(date: Date): Date {
 }
 
 /**
- * Why there is no "delete portfolio".
+ * Deleting, and what it does not touch.
  *
- * Every portfolio is referenced by audit rows from the moment it is created,
- * and `audit_logs` is append-only — enforced by a database trigger, not a
- * convention. Deleting the portfolio would have to blank those references,
- * which is an UPDATE, which the trigger refuses. That is the audit log working
- * exactly as designed: a trading record is not something the application gets
- * to erase, and a feature that quietly rewrote history to tidy a list would be
- * a worse thing to own than a slightly longer list.
+ * This was refused for a long time, and the reason was mechanical rather than
+ * chosen: `audit_logs.portfolio_id` was a foreign key with ON DELETE SET NULL,
+ * and `audit_logs` refuses UPDATE in a trigger, so a delete asked the database
+ * to rewrite an append-only log and was told no.
  *
- * Closing is offered instead. The portfolio disappears from every picker, its
- * history stays intact, and it can be reopened.
+ * The foreign key was the wrong tool for that column. An immutable log records
+ * what happened, and "this happened to portfolio X" stays true after X is
+ * gone; blanking the reference would destroy information to preserve a
+ * constraint about rows that are no longer there. So the column keeps its id
+ * and is no longer a foreign key, the log keeps every entry the portfolio ever
+ * produced, and one more is written just before the row goes, naming what was
+ * deleted, what it held and who asked.
+ *
+ * Closing remains, and is still the right answer for a portfolio with a
+ * history worth keeping: it leaves every picker and can be reopened. Deleting
+ * is for the experiments, and it takes their positions, orders, executions,
+ * snapshots and cash flows with them.
  */
-export const deletionIsNotOffered =
-  'A portfolio is closed rather than deleted: its audit history cannot be erased.';
+export const deletionIsOffered =
+  'A portfolio can be deleted, and its audit history cannot be. Every entry it produced stays, ' +
+  'including one written just before it went that names what was deleted and by whom.';

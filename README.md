@@ -218,6 +218,25 @@ can change any of it afterwards. A portfolio with no stated objective keeps the
 widest profile rather than being retroactively tightened, and the screen shows
 `— not stated` rather than inventing one.
 
+A portfolio can be **deleted**, taking its positions, orders, fills, snapshots
+and cash flows with it. The name has to be typed: a confirmation that can be
+clicked through without reading is not one. A LIVE portfolio is never
+deletable.
+
+The audit log is untouched. That was the objection to deleting at all, and the
+reason was mechanical rather than chosen: `audit_logs.portfolio_id` was a
+foreign key with `ON DELETE SET NULL`, and `audit_logs` refuses `UPDATE` in a
+trigger, so a delete asked the database to rewrite an append-only log. The
+foreign key was the wrong tool for that column — an immutable log records what
+happened, and "this happened to portfolio X" stays true after X is gone, so the
+column keeps its id and is no longer a foreign key. Every entry a deleted
+portfolio produced stays, plus one written just before it went naming what was
+deleted, what it held and who asked.
+
+**Closing** remains, and is still right for a portfolio whose history is worth
+keeping: it leaves every picker and can be reopened. Deleting is for the
+experiments.
+
 **Manage owners** on the dashboard registers them, renames them, records a
 contact and retires them. There is no delete: an owner is named by append-only
 audit rows from the moment they exist, so removing one would mean rewriting a

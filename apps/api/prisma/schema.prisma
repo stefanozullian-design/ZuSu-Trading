@@ -306,9 +306,9 @@ model User {
 
   client           Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
   refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
   portfolioAccess  PortfolioAccess[]   @relation("PortfolioAccessUser")
   grantedAccess    PortfolioAccess[]   @relation("PortfolioAccessGrantedBy")
-  auditLogs        AuditLog[]
   notifications    Notification[]
   journalEntries   TradeJournalEntry[]
   approvedSignals  Signal[]            @relation("SignalApprover")
@@ -443,7 +443,6 @@ model Portfolio {
   performance      PerformanceMetric[]
   fees             Fee[]
   cashFlows        CashFlow[]
-  auditLogs        AuditLog[]
   aiAnalyses       AiAnalysis[]
   notifications    Notification[]
   backtests        Backtest[]
@@ -1450,7 +1449,9 @@ model AuditLog {
   hash          String
 
   actor     User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  portfolio Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: SetNull)
+  /// `portfolioId` is deliberately NOT a relation. An append-only log cannot
+  /// have its rows rewritten to satisfy a deletion elsewhere, and the id of a
+  /// portfolio that no longer exists is more information than a null.
 
   @@index([occurredAt])
   @@index([action, occurredAt])

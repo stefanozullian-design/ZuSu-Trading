@@ -747,7 +747,7 @@ describe('editing an owner', () => {
     expect(back.json().isActive).toBe(true);
   });
 
-  it('offers no way to delete one at all', async () => {
+  it('offers no way to delete an owner at all', async () => {
     const id = await owner('Permanent');
 
     const response = await harness.app.inject({
@@ -963,5 +963,132 @@ describe('switching environment', () => {
     // interpret, and it would read as one continuous record.
     expect(new Date(body.from).getTime()).toBeGreaterThan(before.getTime());
     expect((body.notes as string[]).join(' ')).toMatch(/became PAPER/i);
+  });
+});
+
+/**
+ * Deleting a portfolio.
+ *
+ * Refused for a long time, and the reason was mechanical: audit_logs
+ * .portfolio_id was a foreign key with ON DELETE SET NULL, and audit_logs
+ * refuses UPDATE in a trigger, so the delete asked the database to rewrite an
+ * append-only log. The foreign key was the wrong tool for that column — the
+ * property worth keeping is that the log survives, not that its rows point at
+ * things that still exist.
+ */
+describe('deleting a portfolio', () => {
+  async function make(payload: Record<string, unknown> = {}) {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Disposable', environment: 'DEMO', initialCapital: '1000', ...payload },
+    });
+    expect(response.statusCode).toBe(201);
+    return response.json();
+  }
+
+  function remove(id: string, confirmName: string) {
+    return harness.app.inject({
+      method: 'DELETE',
+      url: `/api/portfolios/${id}?confirmName=${encodeURIComponent(confirmName)}`,
+      headers: session.headers(),
+    });
+  }
+
+  it('removes it, and everything that belonged to it', async () => {
+    const created = await make();
+    await db.position.create({
+      data: {
+        portfolioId: created.id,
+        symbol: 'AAPL',
+        assetClass: 'EQUITY',
+        quantity: '5',
+        averageEntryPrice: '100',
+        status: 'OPEN',
+        openedAt: new Date(),
+      },
+    });
+
+    expect((await remove(created.id, 'Disposable')).statusCode).toBe(204);
+
+    expect(await db.portfolio.findUnique({ where: { id: created.id } })).toBeNull();
+    expect(await db.position.count({ where: { portfolioId: created.id } })).toBe(0);
+  });
+
+  it('keeps every audit entry the portfolio ever produced', async () => {
+    const created = await make();
+    const before = await db.auditLog.count({ where: { portfolioId: created.id } });
+    expect(before).toBeGreaterThan(0);
+
+    await remove(created.id, 'Disposable');
+
+    // The whole point. The log records what happened, and "this happened to
+    // portfolio X" stays true after X is gone — so the id stays too, rather
+    // than being blanked to satisfy a constraint about a row that has left.
+    const after = await db.auditLog.findMany({ where: { portfolioId: created.id } });
+    expect(after.length).toBeGreaterThan(before);
+    expect(after.some((entry) => entry.action === AuditAction.PORTFOLIO_DELETED)).toBe(true);
+  });
+
+  it('records what was deleted, not just that something was', async () => {
+    const created = await make({ name: 'With Detail' });
+
+    await remove(created.id, 'With Detail');
+
+    const entry = await db.auditLog.findFirstOrThrow({
+      where: { entityId: created.id, action: AuditAction.PORTFOLIO_DELETED },
+    });
+    const recorded = entry.beforeValue as { name: string; environment: string };
+    expect(recorded.name).toBe('With Detail');
+    expect(recorded.environment).toBe('DEMO');
+    expect(entry.actorUserId).not.toBeNull();
+  });
+
+  it('refuses without the name typed exactly', async () => {
+    const created = await make();
+
+    // A confirmation that can be clicked through without reading is not one.
+    expect((await remove(created.id, 'disposable')).statusCode).toBe(422);
+    expect((await remove(created.id, '')).statusCode).toBe(422);
+    expect(await db.portfolio.findUnique({ where: { id: created.id } })).not.toBeNull();
+  });
+
+  it('never deletes a live portfolio', async () => {
+    const live = await db.portfolio.create({
+      data: {
+        name: 'Real money',
+        environment: 'LIVE',
+        initialCapital: '1000',
+        cashBalance: '1000',
+      },
+    });
+    await grantPortfolioAccess(
+      db,
+      (await db.user.findUniqueOrThrow({ where: { email: 'pm@test.local' } })).id,
+      live.id,
+      true,
+    );
+
+    const response = await remove(live.id, 'Real money');
+
+    // It records real money and real fills, and a trading record is not
+    // something this application gets to erase.
+    expect(response.statusCode).toBe(422);
+    expect(await db.portfolio.findUnique({ where: { id: live.id } })).not.toBeNull();
+  });
+
+  it('does not let a viewer delete one', async () => {
+    const created = await make();
+    await createUser(db, { email: 'delete-viewer@test.local', role: UserRole.VIEWER });
+    const viewer = await login(harness.app, 'delete-viewer@test.local');
+
+    const response = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/portfolios/${created.id}?confirmName=Disposable`,
+      headers: viewer.headers(),
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 });

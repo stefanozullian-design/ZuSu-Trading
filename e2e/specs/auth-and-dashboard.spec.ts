@@ -423,6 +423,47 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('button', { name: /move to live/i })).toHaveCount(0);
   });
 
+  test('deletes a portfolio, but only when its name is typed', async ({ page }) => {
+    await makePortfolio(page, 'E2E Debris', '500');
+    await page.getByRole('button', { name: /E2E Debris/ }).click();
+    await page.getByRole('button', { name: /^Delete$/ }).click();
+
+    const confirm = page.getByRole('button', { name: /delete permanently/i });
+    await expect(confirm).toBeDisabled();
+
+    // A confirmation that can be clicked through without reading is not one.
+    await page.getByLabel(/type the portfolio name/i).fill('e2e debris');
+    await expect(confirm).toBeDisabled();
+
+    await page.getByLabel(/type the portfolio name/i).fill('E2E Debris');
+    await expect(confirm).toBeEnabled();
+
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'DELETE'),
+      confirm.click(),
+    ]);
+
+    await expect(page.getByRole('button', { name: /E2E Debris/ })).toHaveCount(0);
+    await page.getByRole('button', { name: /show closed/i }).click();
+    // Gone rather than hidden — the difference between deleting and closing.
+    await expect(page.getByRole('button', { name: /E2E Debris/ })).toHaveCount(0);
+  });
+
+  test('says what deleting does not touch', async ({ page }) => {
+    await makePortfolio(page, 'E2E Warned', '500');
+    await page.getByRole('button', { name: /E2E Warned/ }).click();
+    await page.getByRole('button', { name: /^Delete$/ }).click();
+
+    // The audit log is the thing people assume deleting destroys, and the one
+    // thing it does not.
+    await expect(page.getByText(/audit log is not touched/i)).toBeVisible();
+    await expect(page.getByText(/cannot be undone/i)).toBeVisible();
+    await expect(page.getByText(/hides it from every list/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /^Cancel$/ }).click();
+    await expect(page.getByRole('button', { name: /E2E Warned/ })).toBeVisible();
+  });
+
   test('keeps the chosen portfolio when you change page', async ({ page }) => {
     // Each page used to keep its own selection, so picking a book here and
     // clicking through to Trading landed you on whichever one came first.

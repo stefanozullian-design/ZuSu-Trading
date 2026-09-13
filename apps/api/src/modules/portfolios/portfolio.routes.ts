@@ -131,6 +131,33 @@ export async function registerPortfolioRoutes(
       ),
   );
 
+  typed.delete(
+    '/:id',
+    {
+      preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'Delete a portfolio and everything that belonged to it',
+        description:
+          'The name must be typed to confirm: a confirmation that can be clicked through ' +
+          'without reading is not one. A LIVE portfolio is never deletable. The audit log is ' +
+          'untouched — every entry the portfolio produced stays, including one written just ' +
+          'before it went that names what was deleted and by whom.',
+        params: idParams,
+        querystring: z.object({ confirmName: z.string().min(1).max(120) }),
+        response: { 204: z.null() },
+      },
+    },
+    async (request, reply) => {
+      await container.portfolios.remove(
+        principalOf(request),
+        request.params.id,
+        request.query.confirmName,
+      );
+      return reply.status(204).send(null);
+    },
+  );
+
   typed.post(
     '/:id/environment',
     {
