@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
+import { Writable } from 'node:stream';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { npmCommand } from './env-tools.mjs';
@@ -44,7 +45,29 @@ async function askForDatabaseUrl() {
   // hanging on a prompt nobody can answer.
   if (!process.stdin.isTTY) return null;
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // A password must not echo. It is about to be typed in a terminal that
+  // people screenshot, read over each other's shoulders, and scroll back
+  // through — and there is no reason for it to be on screen at all.
+  let muted = false;
+  const output = new Writable({
+    write(chunk, encoding, callback) {
+      if (!muted) process.stdout.write(chunk, encoding);
+      callback();
+    },
+  });
+
+  const rl = createInterface({ input: process.stdin, output, terminal: true });
+  const askHidden = async (prompt) => {
+    process.stdout.write(prompt);
+    muted = true;
+    try {
+      return await rl.question('');
+    } finally {
+      muted = false;
+      process.stdout.write('\n');
+    }
+  };
+
   try {
     console.log(`
 Where is your PostgreSQL?
@@ -52,9 +75,11 @@ Where is your PostgreSQL?
   Press Enter to accept each default. On a stock Windows or macOS install the
   user is "postgres" and the password is the one the installer asked you for.
   The database itself does not need to exist — it will be created.
+
+  The password will not appear as you type it. That is deliberate.
 `);
     const user = (await rl.question('  PostgreSQL user [postgres]: ')).trim() || 'postgres';
-    const password = (await rl.question(`  Password for "${user}": `)).trim();
+    const password = (await askHidden(`  Password for "${user}" (hidden): `)).trim();
     const host = (await rl.question('  Host [localhost]: ')).trim() || 'localhost';
     const port = (await rl.question('  Port [5432]: ')).trim() || '5432';
     const database =
