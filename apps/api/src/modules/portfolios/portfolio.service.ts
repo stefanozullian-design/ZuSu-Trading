@@ -42,10 +42,26 @@ export class PortfolioService {
     private readonly brokers: BrokerRegistry,
   ) {}
 
-  async list(principal: Principal): Promise<PortfolioSummary[]> {
+  /**
+   * Portfolios this principal may see.
+   *
+   * Closed ones are left out by default, which is what makes closing useful:
+   * a portfolio made by mistake stops cluttering every picker in the app. They
+   * are never deleted — see `deletionIsNotOffered` below — so `includeClosed`
+   * brings them back for anyone who wants to reopen one.
+   */
+  async list(
+    principal: Principal,
+    options: { includeClosed?: boolean } = {},
+  ): Promise<PortfolioSummary[]> {
     this.access.assertPermission(principal, Permission.PORTFOLIO_READ);
     const portfolios = await this.db.portfolio.findMany({
-      where: this.access.portfolioScope(principal),
+      where: {
+        AND: [
+          this.access.portfolioScope(principal),
+          options.includeClosed ? {} : { isActive: true },
+        ],
+      },
       orderBy: [{ environment: 'asc' }, { name: 'asc' }],
       include: { client: { select: { id: true, name: true } } },
     });
@@ -206,6 +222,20 @@ export class PortfolioService {
       permission: Permission.PORTFOLIO_WRITE,
     });
 
+    // Closing hides a portfolio from every list, and a hidden book you still
+    // hold shares in is a book nobody is watching. Sell or transfer first.
+    if (patch.isActive === false && before.isActive) {
+      const open = await this.db.position.count({ where: { portfolioId, status: 'OPEN' } });
+      if (open > 0) {
+        throw new AppError(
+          'CONFLICT',
+          `This portfolio still holds ${String(open)} open position(s). Close them first — ` +
+            'a portfolio hidden from the list while it is still in a trade is one nobody is ' +
+            'watching.',
+        );
+      }
+    }
+
     const updated = await this.db.$transaction(async (tx) => {
       const next = await tx.portfolio.update({
         where: { id: portfolioId },
@@ -353,3 +383,20 @@ function percentOf(capital: Decimal, pct: number): string {
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
+
+/**
+ * Why there is no "delete portfolio".
+ *
+ * Every portfolio is referenced by audit rows from the moment it is created,
+ * and `audit_logs` is append-only — enforced by a database trigger, not a
+ * convention. Deleting the portfolio would have to blank those references,
+ * which is an UPDATE, which the trigger refuses. That is the audit log working
+ * exactly as designed: a trading record is not something the application gets
+ * to erase, and a feature that quietly rewrote history to tidy a list would be
+ * a worse thing to own than a slightly longer list.
+ *
+ * Closing is offered instead. The portfolio disappears from every picker, its
+ * history stays intact, and it can be reopened.
+ */
+export const deletionIsNotOffered =
+  'A portfolio is closed rather than deleted: its audit history cannot be erased.';

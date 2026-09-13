@@ -49,10 +49,24 @@ export async function registerPortfolioRoutes(
       schema: {
         tags: ['portfolios'],
         summary: 'Portfolios the caller may see',
+        description:
+          'Closed portfolios are left out unless asked for. They are never deleted — a ' +
+          'portfolio is referenced by append-only audit rows from the moment it exists.',
+        querystring: z.object({
+          includeClosed: z
+            .enum(['true', 'false'])
+            .default('false')
+            .transform((v) => v === 'true'),
+        }),
         response: { 200: z.array(portfolioSummarySchema) },
       },
     },
-    async (request, reply) => reply.send(await container.portfolios.list(principalOf(request))),
+    async (request, reply) =>
+      reply.send(
+        await container.portfolios.list(principalOf(request), {
+          includeClosed: request.query.includeClosed,
+        }),
+      ),
   );
 
   typed.post(

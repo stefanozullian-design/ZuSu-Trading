@@ -81,6 +81,87 @@ describe('creating a portfolio', () => {
     expect(grant.canTrade).toBe(true);
   });
 
+  it('renames without touching anything else', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Typo Fund', environment: 'DEMO', initialCapital: '10000' },
+    });
+    const { id } = created.json() as { id: string };
+
+    const renamed = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/portfolios/${id}`,
+      headers: session.headers(),
+      payload: { name: 'Properly Named Fund' },
+    });
+
+    expect(renamed.statusCode).toBe(200);
+    expect((renamed.json() as { name: string }).name).toBe('Properly Named Fund');
+    const row = await db.portfolio.findUniqueOrThrow({ where: { id } });
+    expect(Number(row.cashBalance)).toBe(10_000);
+    expect(row.isActive).toBe(true);
+  });
+
+  it('closes a portfolio, hiding it from the list without deleting it', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Made By Mistake', environment: 'DEMO', initialCapital: '1000' },
+    });
+    const { id } = created.json() as { id: string };
+
+    await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/portfolios/${id}`,
+      headers: session.headers(),
+      payload: { isActive: false },
+    });
+
+    const listed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/portfolios',
+      headers: { cookie: session.cookies },
+    });
+    expect((listed.json() as { id: string }[]).map((p) => p.id)).not.toContain(id);
+
+    // Hidden, never erased: the row and its audit history are both intact.
+    expect(await db.portfolio.findUnique({ where: { id } })).not.toBeNull();
+
+    const withClosed = await harness.app.inject({
+      method: 'GET',
+      url: '/api/portfolios?includeClosed=true',
+      headers: { cookie: session.cookies },
+    });
+    expect((withClosed.json() as { id: string }[]).map((p) => p.id)).toContain(id);
+  });
+
+  it('refuses to close a portfolio that still holds something', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Still Invested', environment: 'DEMO', initialCapital: '10000' },
+    });
+    const { id } = created.json() as { id: string };
+    await db.position.create({
+      data: { portfolioId: id, symbol: 'AAPL', quantity: '10', averageEntryPrice: '180' },
+    });
+
+    const closed = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/portfolios/${id}`,
+      headers: session.headers(),
+      payload: { isActive: false },
+    });
+
+    // A hidden book you still hold shares in is a book nobody is watching.
+    expect(closed.statusCode).toBe(409);
+    expect(closed.json().error.message).toContain('still holds 1 open position');
+  });
+
   it('records the creation in the audit log', async () => {
     const response = await harness.app.inject({
       method: 'POST',

@@ -77,6 +77,39 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('button', { name: /E2E Second Book/ })).toBeVisible();
   });
 
+  test('renames a portfolio and closes it out of the list', async ({ page }) => {
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Rename Me');
+    await page.getByLabel('Starting cash').fill('5000');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().endsWith('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /E2E Rename Me/ }).click();
+    await page.getByRole('button', { name: /^Rename$/ }).click();
+    await page.getByLabel('New portfolio name').fill('E2E Renamed');
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'PATCH'),
+      page.getByRole('button', { name: /save name/i }).click(),
+    ]);
+    await expect(page.getByRole('button', { name: /E2E Renamed/ })).toBeVisible();
+
+    // Closed rather than deleted: gone from the list, and still there behind
+    // "Show closed", because its audit history cannot be erased.
+    await page.getByRole('button', { name: /E2E Renamed/ }).click();
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'PATCH'),
+      page.getByRole('button', { name: /^Close$/ }).click(),
+    ]);
+    await expect(page.getByRole('button', { name: /E2E Renamed/ })).toHaveCount(0);
+
+    await page.getByRole('button', { name: /show closed/i }).click();
+    await expect(page.getByRole('button', { name: /E2E Renamed/ })).toBeVisible();
+  });
+
   test('states plainly whether anything trades on its own', async ({ page }) => {
     // The one number on the dashboard worth being unambiguous about, and it is
     // read from the live configurations rather than asserted in prose.

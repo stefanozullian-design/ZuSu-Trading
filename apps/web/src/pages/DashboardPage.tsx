@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Check, Pencil, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, explainApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -15,13 +15,16 @@ import { cn } from '@/lib/utils';
 import type { AutomationConfig, PortfolioSummary } from '@/lib/types';
 
 export function DashboardPage() {
+  const [showClosed, setShowClosed] = useState(false);
+
   const {
     data: portfolios,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['portfolios'],
-    queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
+    queryKey: ['portfolios', showClosed],
+    queryFn: () =>
+      api<PortfolioSummary[]>(`/api/portfolios?includeClosed=${showClosed ? 'true' : 'false'}`),
     refetchInterval: 15_000,
   });
 
@@ -76,9 +79,19 @@ export function DashboardPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="shrink-0 text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+          onClick={() => setShowClosed(!showClosed)}
+        >
+          {showClosed ? 'Hide closed' : 'Show closed'}
+        </button>
       </div>
 
-      <NewPortfolio />
+      <div className="flex flex-wrap items-center gap-2">
+        <NewPortfolio />
+        {selected && <ManagePortfolio portfolio={selected} />}
+      </div>
 
       {selected && (
         <>
@@ -374,5 +387,107 @@ function NewPortfolio() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Renaming and closing.
+ *
+ * Closing rather than deleting, and the button says so. Every portfolio is
+ * referenced by append-only audit rows from the moment it is created, so
+ * erasing one would mean rewriting a trading record — which the database
+ * refuses, and rightly. A closed portfolio leaves every picker in the app and
+ * keeps its history, which is what people actually want from "delete" when
+ * they made one by mistake.
+ */
+function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(portfolio.name);
+  const [error, setError] = useState<string | null>(null);
+
+  const patch = useMutation({
+    mutationFn: (body: { name?: string; isActive?: boolean }) =>
+      api<PortfolioSummary>(`/api/portfolios/${portfolio.id}`, { method: 'PATCH', body }),
+    onSuccess: async () => {
+      setError(null);
+      setRenaming(false);
+      await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+    },
+    onError: (err: Error) => setError(explainApiError(err)),
+  });
+
+  if (!can('portfolio:write')) return null;
+
+  if (renaming) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Input
+          id="rename-portfolio"
+          className="h-7 w-52 text-xs"
+          aria-label="New portfolio name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim().length >= 2) patch.mutate({ name: name.trim() });
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={name.trim().length < 2 || patch.isPending}
+          onClick={() => patch.mutate({ name: name.trim() })}
+        >
+          <Check className="h-3.5 w-3.5" aria-hidden />
+          <span className="sr-only">Save name</span>
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>
+          <X className="h-3.5 w-3.5" aria-hidden />
+          <span className="sr-only">Cancel rename</span>
+        </Button>
+        {error && <span className="text-[11px] text-red-400">{error}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setName(portfolio.name);
+          setRenaming(true);
+        }}
+      >
+        <Pencil className="mr-1 h-3.5 w-3.5" aria-hidden />
+        Rename
+      </Button>
+
+      {portfolio.isActive ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={patch.isPending}
+          onClick={() => patch.mutate({ isActive: false })}
+          title="Hides it from every list. The history is kept and it can be reopened."
+        >
+          Close
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={patch.isPending}
+          onClick={() => patch.mutate({ isActive: true })}
+        >
+          Reopen
+        </Button>
+      )}
+
+      {error && <span className="max-w-md text-[11px] text-amber-400">{error}</span>}
+    </div>
   );
 }
