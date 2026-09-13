@@ -165,6 +165,38 @@ Evaluation accounts for every symbol it looked at: fired, rejected, already
 signalled on this bar, or **could not be judged** with the reason — a rule that
 cannot be evaluated returns unknown, and unknown is never permission to trade.
 
+### Owners and what a portfolio is for
+
+One person managing money for several people is the ordinary case rather than
+an enterprise one: their own portfolios, a parent's, each split by what the
+money is for. A portfolio records an **owner** (the person whose money it is,
+which the API calls a client) and an **objective**.
+
+Names are unique per owner, not per installation, so two people may each have a
+"Retirement". The constraint is declared `NULLS NOT DISTINCT`, because
+PostgreSQL otherwise treats every NULL as distinct and would have allowed any
+number of unowned portfolios sharing a name — the collision the constraint
+exists to prevent, through the back door.
+
+The objective is not a label. It selects the limits a portfolio _starts_ under:
+
+| Objective   | Daily loss | Trades/day | Max drawdown |
+| ----------- | ---------- | ---------- | ------------ |
+| Day trading | 2%         | 20         | 15%          |
+| Growth      | 1.5%       | 6          | 12%          |
+| Income      | 1%         | 3          | 10%          |
+| Retirement  | 0.5%       | 2          | 8%           |
+
+A single set of defaults meant one of those was always wrong. They remain a
+starting point — the risk engine enforces what is stored, and an administrator
+can change any of it afterwards. A portfolio with no stated objective keeps the
+widest profile rather than being retroactively tightened, and the screen shows
+`— not stated` rather than inventing one.
+
+Assigning a portfolio to an owner is a manager's job; registering a new owner
+needs `client:write`, which is administrator-only. Someone who could invent an
+owner could quietly move a book to one.
+
 ### The Trading page
 
 `/trading` is where the platform's premise is visible. A live strategy produces

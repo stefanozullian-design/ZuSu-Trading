@@ -385,3 +385,215 @@ describe('system endpoints', () => {
     }
   });
 });
+
+/**
+ * Owners and objectives.
+ *
+ * One person managing money for several people is the ordinary case, not an
+ * enterprise one: their own portfolios, a parent's, each split by what the
+ * money is for. Two properties matter and neither is obvious from the schema.
+ * A name only has to be unique within an owner, because "Retirement" is what
+ * everybody calls that portfolio. And the objective is not a label — it picks
+ * the limits the portfolio starts under, so money meant for a retirement does
+ * not begin life with a day trader's appetite.
+ */
+describe('who a portfolio belongs to', () => {
+  // Created directly: registering a new person whose money is under
+  // management needs `client:write`, which is administrator-only. A manager
+  // assigns portfolios to owners that already exist, and the test below pins
+  // that boundary rather than working around it here.
+  async function owner(name: string): Promise<string> {
+    const client = await db.client.create({ data: { name } });
+    return client.id;
+  }
+
+  async function make(payload: Record<string, unknown>) {
+    return harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { environment: 'DEMO', initialCapital: '50000', ...payload },
+    });
+  }
+
+  it('lets two people each have a portfolio with the same name', async () => {
+    const [mine, mum] = [await owner('Stefano'), await owner('Mum')];
+
+    expect((await make({ name: 'Retirement', clientId: mine })).statusCode).toBe(201);
+    const second = await make({ name: 'Retirement', clientId: mum });
+
+    // The whole point of an owner. Requiring "Mum — Retirement" would make the
+    // owner field decorative.
+    expect(second.statusCode).toBe(201);
+    expect(second.json().clientName).toBe('Mum');
+  });
+
+  it('still refuses the same name twice for one person', async () => {
+    const mine = await owner('Stefano');
+    await make({ name: 'Retirement', clientId: mine });
+
+    expect((await make({ name: 'Retirement', clientId: mine })).statusCode).toBe(409);
+  });
+
+  it('refuses the same name twice among the unassigned ones', async () => {
+    await make({ name: 'Scratch' });
+
+    // PostgreSQL treats NULLs as distinct by default, which would have let any
+    // number of unowned portfolios share a name. The constraint says
+    // NULLS NOT DISTINCT precisely so this is a conflict.
+    expect((await make({ name: 'Scratch' })).statusCode).toBe(409);
+  });
+
+  it('filters the list to one owner', async () => {
+    const [mine, mum] = [await owner('Stefano'), await owner('Mum')];
+    await make({ name: 'Day trading', clientId: mine });
+    await make({ name: 'Retirement', clientId: mum });
+    await make({ name: 'Retirement', clientId: mine });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/portfolios?ownerId=${mine}`,
+      headers: session.headers(),
+    });
+
+    const names = (response.json() as { name: string }[]).map((p) => p.name).sort();
+    expect(names).toEqual(['Day trading', 'Retirement']);
+  });
+
+  it('finds the ones nobody has been assigned to', async () => {
+    const mine = await owner('Stefano');
+    await make({ name: 'Assigned', clientId: mine });
+    await make({ name: 'Forgotten' });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: '/api/portfolios?ownerId=none',
+      headers: session.headers(),
+    });
+
+    // Asking for the unassigned ones is how a person finds what they forgot,
+    // so it has to be a filter rather than the absence of one.
+    const rows = response.json() as { name: string; clientId: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe('Forgotten');
+    expect(rows[0]?.clientId).toBeNull();
+  });
+
+  it('reassigns an owner, and says so on both sides of the audit entry', async () => {
+    const [mine, mum] = [await owner('Stefano'), await owner('Mum')];
+    const created = (await make({ name: 'Set up wrong', clientId: mine })).json();
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/portfolios/${created.id}`,
+      headers: session.headers(),
+      payload: { clientId: mum },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().clientName).toBe('Mum');
+
+    // The reporting link follows the column; leaving them to drift would make
+    // two parts of the app disagree about the same portfolio.
+    const links = await db.clientPortfolio.findMany({ where: { portfolioId: created.id } });
+    expect(links.map((l) => l.clientId)).toEqual([mum]);
+
+    const entry = await db.auditLog.findFirstOrThrow({
+      where: { entityId: created.id, action: AuditAction.PORTFOLIO_MODIFIED },
+      orderBy: { seq: 'desc' },
+    });
+    expect((entry.beforeValue as { clientId: string }).clientId).toBe(mine);
+    expect((entry.afterValue as { clientId: string }).clientId).toBe(mum);
+  });
+
+  it('does not let a manager register a new owner', async () => {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      headers: session.headers(),
+      payload: { name: 'Somebody new' },
+    });
+
+    // Saying whose money is under management is an administrative act, and a
+    // manager who could invent an owner could quietly move a book to one.
+    // Assigning a portfolio to an owner that exists is a manager's job; this
+    // is not.
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('keeps the owner visible after an unrelated edit', async () => {
+    const mine = await owner('Stefano');
+    const created = (await make({ name: 'Before', clientId: mine })).json();
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/portfolios/${created.id}`,
+      headers: session.headers(),
+      payload: { name: 'After' },
+    });
+
+    // A rename reported the portfolio as unowned, which nobody saw while the
+    // owner was invisible on screen and which reads as "renaming cleared the
+    // owner" now that it is not.
+    expect(response.json().clientName).toBe('Stefano');
+  });
+});
+
+describe('what a portfolio is for', () => {
+  async function limitsFor(objective: string | undefined) {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: {
+        name: `Fund ${objective ?? 'unstated'}`,
+        environment: 'DEMO',
+        initialCapital: '100000',
+        ...(objective ? { objective } : {}),
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    return db.riskLimit.findFirstOrThrow({
+      where: { portfolioId: response.json().id as string, isActive: true },
+    });
+  }
+
+  it('starts a retirement portfolio far tighter than a day-trading one', async () => {
+    const [day, retirement] = [await limitsFor('DAY_TRADING'), await limitsFor('RETIREMENT')];
+
+    // Money that must still be there in decades cannot share a day trader's
+    // drawdown. 2% of capital against 0.5%, twenty trades a day against two.
+    expect(Number(day.maxDailyLoss)).toBeCloseTo(2000, 6);
+    expect(Number(retirement.maxDailyLoss)).toBeCloseTo(500, 6);
+    expect(day.maxTradesPerDay).toBe(20);
+    expect(retirement.maxTradesPerDay).toBe(2);
+  });
+
+  it('leaves a portfolio with no stated objective on the limits it always had', async () => {
+    const unstated = await limitsFor(undefined);
+
+    // Tightening limits under portfolios that already exist would change how
+    // they behave without anyone asking.
+    expect(Number(unstated.maxDailyLoss)).toBeCloseTo(2000, 6);
+    expect(unstated.maxTradesPerDay).toBe(20);
+  });
+
+  it('says which objective the starting limits came from', async () => {
+    const income = await limitsFor('INCOME');
+
+    // A person reading the risk history a year later can see why these
+    // particular numbers were the starting point.
+    expect(income.changeReason).toContain('INCOME');
+  });
+
+  it('records no objective rather than inventing one', async () => {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/portfolios',
+      headers: session.headers(),
+      payload: { name: 'Unstated', environment: 'DEMO', initialCapital: '1000' },
+    });
+
+    expect(response.json().objective).toBeNull();
+  });
+});

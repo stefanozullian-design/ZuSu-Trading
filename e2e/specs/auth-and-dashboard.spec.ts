@@ -110,6 +110,117 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('button', { name: /E2E Renamed/ })).toBeVisible();
   });
 
+  test('says whose each portfolio is, and filters to one person', async ({ page }) => {
+    // One person managing money for several people is the ordinary case: their
+    // own books, a parent's, split by what each is for. Two of them may
+    // reasonably be called "Retirement", so the name alone stops identifying a
+    // book and the owner has to be on screen beside it.
+    await expect(page.getByRole('button', { name: /^Everyone$/ })).toBeVisible();
+    const owner = page.getByRole('button', { name: /Demo Client/ }).first();
+    await expect(owner).toBeVisible();
+
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Unowned Book');
+    await page.getByLabel('Starting cash').fill('4000');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    // Filtered to a person, a portfolio belonging to nobody is not theirs.
+    await Promise.all([page.waitForResponse((r) => r.url().includes('ownerId=')), owner.click()]);
+    await expect(page.getByRole('button', { name: /E2E Unowned Book/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Demo Portfolio/ })).toBeVisible();
+
+    // And the unassigned ones are findable rather than invisible — otherwise a
+    // portfolio somebody forgot to assign is lost the moment they filter.
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('ownerId=none')),
+      page.getByRole('button', { name: /^Unassigned$/ }).click(),
+    ]);
+    await expect(page.getByRole('button', { name: /E2E Unowned Book/ })).toBeVisible();
+  });
+
+  test('creates a portfolio for whoever is filtered, not for nobody', async ({ page }) => {
+    const owner = page.getByRole('button', { name: /Demo Client/ }).first();
+    await Promise.all([page.waitForResponse((r) => r.url().includes('ownerId=')), owner.click()]);
+
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Filtered Create');
+    await page.getByLabel('Starting cash').fill('3000');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    // Creating it unassigned would make it vanish from the list being looked
+    // at, which reads as the creation having failed.
+    await expect(page.getByRole('button', { name: /E2E Filtered Create/ })).toBeVisible();
+  });
+
+  test('shows an unstated purpose as a dash, never as a guess', async ({ page }) => {
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E No Purpose');
+    await page.getByLabel('Starting cash').fill('2000');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /E2E No Purpose/ }).click();
+
+    // The same rule every other unknown on this page follows: nobody said what
+    // this is for, so the screen says nobody said.
+    await expect(page.getByText('— not stated').first()).toBeVisible();
+  });
+
+  test('a portfolio started for a retirement begins under tighter limits', async ({ page }) => {
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Retirement Book');
+    await page.getByLabel('Starting cash').fill('100000');
+    await page.getByLabel('What it is for').selectOption('RETIREMENT');
+
+    // The picker says what the choice changes, rather than leaving it to be
+    // discovered on the Risk page later.
+    await expect(page.getByText(/must still be there in decades/i)).toBeVisible();
+
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /E2E Retirement Book/ }).click();
+    await page.getByRole('link', { name: 'Risk', exact: true }).click();
+
+    // 0.5% of 100,000 rather than the day-trading 2%, and two trades a day
+    // rather than twenty. Money meant for decades does not start life under a
+    // day trader's appetite.
+    const row = (label: string) =>
+      page
+        .locator('div')
+        .filter({ hasText: new RegExp(`^${label}`) })
+        .last();
+    await expect(row('Max daily loss')).toContainText('500');
+    await expect(row('Trades per day')).toContainText('2');
+  });
+
+  test('a manager may assign an owner but not invent one', async ({ page }) => {
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+
+    // Saying whose money is under management is an administrative act: someone
+    // who could invent an owner could quietly move a book to one.
+    await expect(page.getByLabel('Owner')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^New$/ })).toHaveCount(0);
+  });
+
   test('keeps the chosen portfolio when you change page', async ({ page }) => {
     // Each page used to keep its own selection, so picking a book here and
     // clicking through to Trading landed you on whichever one came first.

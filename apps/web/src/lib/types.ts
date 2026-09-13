@@ -35,12 +35,27 @@ export interface EnvironmentInfo {
   liveTradingAllowed: boolean;
 }
 
+export type PortfolioObjective = 'DAY_TRADING' | 'GROWTH' | 'INCOME' | 'RETIREMENT';
+
+/** A person whose money is under management. Shown as "owner" on screen. */
+export interface Owner {
+  id: string;
+  name: string;
+  externalRef: string | null;
+  contactEmail: string | null;
+  isActive: boolean;
+  portfolioCount: number;
+  createdAt: string;
+}
+
 export interface PortfolioSummary {
   id: string;
   name: string;
   environment: TradingEnvironment;
   clientId: string | null;
   clientName: string | null;
+  /** Null on portfolios created before objectives existed. Never guessed. */
+  objective: PortfolioObjective | null;
   baseCurrency: string;
   executionMode: string;
   tradingState: TradingState;

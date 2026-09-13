@@ -40,6 +40,14 @@ enum ExecutionMode {
   FULL_AUTO
 }
 
+/// What a portfolio is for. Selects its starting risk limits.
+enum PortfolioObjective {
+  DAY_TRADING
+  GROWTH
+  INCOME
+  RETIREMENT
+}
+
 enum TradingState {
   ACTIVE
   HALTED
@@ -407,6 +415,8 @@ model Portfolio {
   initialCapital Decimal            @map("initial_capital") @db.Decimal(24, 8)
   cashBalance    Decimal            @map("cash_balance") @db.Decimal(24, 8)
   executionMode  ExecutionMode      @default(MANUAL_APPROVAL) @map("execution_mode")
+  /// What the money is for. Null on portfolios created before objectives existed.
+  objective      PortfolioObjective?
   tradingState   TradingState       @default(ACTIVE) @map("trading_state")
   isActive       Boolean            @default(true) @map("is_active")
   haltedReason   String?            @map("halted_reason")
@@ -438,7 +448,10 @@ model Portfolio {
   watchlists       Watchlist[]
   reports          Report[]
 
-  @@unique([name, environment])
+  /// Unique per owner, not per installation: two people may each have a
+  /// "Retirement". The migration declares NULLS NOT DISTINCT so that unowned
+  /// portfolios collide with each other too.
+  @@unique([clientId, name, environment])
   @@index([environment])
   @@index([clientId])
   @@index([tradingState])

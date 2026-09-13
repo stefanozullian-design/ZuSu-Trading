@@ -51,7 +51,7 @@ export function TradingPage() {
 
   const { selectedId: id, select: setPortfolioId } = useSelectedPortfolio(portfolios);
 
-  const { data: signals } = useQuery({
+  const { data: signals, isPending: signalsPending } = useQuery({
     queryKey: ['signals', id],
     queryFn: () => api<{ signals: SignalRow[] }>(`/api/strategies/signals?portfolioId=${id}`),
     enabled: Boolean(id),
@@ -196,11 +196,24 @@ export function TradingPage() {
         <CardHeader className="flex-row items-center gap-2">
           <ShieldQuestion className="h-3.5 w-3.5 text-sky-400" aria-hidden />
           <CardTitle>
-            {waiting.length} recommendation{waiting.length === 1 ? '' : 's'} awaiting a decision
+            {/*
+              "0 recommendations awaiting a decision" while the queue is still
+              loading is a lie with a short life and a real cost: this is the
+              screen a person checks to decide whether anything needs them, and
+              for a moment it told them no on no evidence.
+            */}
+            {signalsPending
+              ? 'Loading what is awaiting a decision…'
+              : `${String(waiting.length)} recommendation${waiting.length === 1 ? '' : 's'} awaiting a decision`}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {waiting.length === 0 && (
+          {signalsPending && (
+            <p className="text-xs text-muted-foreground">
+              Asking the engine what is waiting. Nothing is hidden while this loads.
+            </p>
+          )}
+          {!signalsPending && waiting.length === 0 && (
             <p className="text-xs text-muted-foreground">
               Nothing waiting. A signal appears here when a live strategy produces one, and stays
               until somebody decides — nothing sweeps this queue automatically.

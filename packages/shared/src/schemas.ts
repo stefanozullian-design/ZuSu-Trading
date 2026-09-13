@@ -5,6 +5,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  PortfolioObjective,
   ServiceStatus,
   TimeInForce,
   TradingEnvironment,
@@ -139,10 +140,15 @@ export const riskLimitsSchema = z.object({
 });
 export type RiskLimitsInput = z.infer<typeof riskLimitsSchema>;
 
+export const portfolioObjectiveSchema = z.enum(enumValues(PortfolioObjective));
+
 export const createPortfolioSchema = z.object({
   name: z.string().trim().min(2).max(120),
   environment: tradingEnvironmentSchema,
+  /** The person whose money this is. Absent means unassigned, never "mine". */
   clientId: z.string().uuid().optional(),
+  /** What the money is for; selects the starting risk limits. */
+  objective: portfolioObjectiveSchema.optional(),
   baseCurrency: z.string().trim().length(3).default('USD'),
   initialCapital: positiveDecimalString,
   executionMode: executionModeSchema.default(ExecutionMode.MANUAL_APPROVAL),
@@ -155,6 +161,13 @@ export const updatePortfolioSchema = z
     name: z.string().trim().min(2).max(120),
     executionMode: executionModeSchema,
     isActive: z.boolean(),
+    /**
+     * Both of these are nullable rather than merely optional: "no owner" and
+     * "no stated objective" are answers a person can give, and a field that
+     * can only be set and never cleared makes a mis-assignment permanent.
+     */
+    clientId: z.string().uuid().nullable(),
+    objective: portfolioObjectiveSchema.nullable(),
   })
   .partial();
 
@@ -164,6 +177,7 @@ export const portfolioSummarySchema = z.object({
   environment: tradingEnvironmentSchema,
   clientId: z.string().uuid().nullable(),
   clientName: z.string().nullable(),
+  objective: portfolioObjectiveSchema.nullable(),
   baseCurrency: z.string(),
   executionMode: executionModeSchema,
   tradingState: tradingStateSchema,

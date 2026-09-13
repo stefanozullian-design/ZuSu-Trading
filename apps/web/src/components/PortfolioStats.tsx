@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ObjectiveBadge } from '@/components/Owners';
 import { formatMoney, formatPercent, formatSignedMoney, pnlTone } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { PortfolioSummary } from '@/lib/types';
@@ -99,6 +100,14 @@ export function PortfolioStats({ portfolio }: { portfolio: PortfolioSummary }) {
         </Badge>
         <Badge variant="neutral">{portfolio.executionMode.replace('_', ' ')}</Badge>
         {portfolio.clientName && <Badge variant="outline">{portfolio.clientName}</Badge>}
+        {/*
+          What the money is for, beside whose it is. Rendered as a dash when
+          nobody has said, rather than defaulted to something plausible — the
+          same rule every other unknown on this page follows.
+        */}
+        <Badge variant="outline">
+          <ObjectiveBadge objective={portfolio.objective} />
+        </Badge>
       </div>
     </Card>
   );

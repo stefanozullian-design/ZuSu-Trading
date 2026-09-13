@@ -77,7 +77,12 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'npm run dev:api',
+      // Migrations first, in the same command. Playwright starts a webServer
+      // *before* globalSetup runs, so on any run that introduces a migration
+      // the API booted against a database one migration behind, refused to
+      // start — correctly — and the whole suite failed on a 120-second
+      // timeout whose message said nothing about migrations.
+      command: 'npm run db:deploy && npm run dev:api',
       cwd: '..',
       url: `http://127.0.0.1:${String(API_PORT)}/api/system/live`,
       env: apiEnv,

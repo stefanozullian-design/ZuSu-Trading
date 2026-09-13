@@ -37,6 +37,35 @@ export const ExecutionMode = {
 } as const;
 export type ExecutionMode = (typeof ExecutionMode)[keyof typeof ExecutionMode];
 
+/**
+ * What a portfolio is *for*.
+ *
+ * Not decoration: it selects the starting risk limits. Money that is going to
+ * be spent in thirty years and money that is being traded this week cannot
+ * sensibly share a maximum drawdown, and a single set of defaults meant one of
+ * the two was always wrong. Nullable on a portfolio — the ones created before
+ * this existed have no stated objective, and inventing one for them would put
+ * a number on the screen that nobody chose.
+ */
+export const PortfolioObjective = {
+  /** Held for weeks or less; the widest limits this platform offers. */
+  DAY_TRADING: 'DAY_TRADING',
+  /** Long-horizon appreciation. Fewer, larger, longer-held positions. */
+  GROWTH: 'GROWTH',
+  /** Dividends and steady yield rather than appreciation. */
+  INCOME: 'INCOME',
+  /** Money that must still be there in decades. The tightest limits. */
+  RETIREMENT: 'RETIREMENT',
+} as const;
+export type PortfolioObjective = (typeof PortfolioObjective)[keyof typeof PortfolioObjective];
+
+export const PORTFOLIO_OBJECTIVES: PortfolioObjective[] = [
+  'DAY_TRADING',
+  'GROWTH',
+  'INCOME',
+  'RETIREMENT',
+];
+
 /** Portfolio-level trading state, driven by kill switches and health checks. */
 export const TradingState = {
   ACTIVE: 'ACTIVE',

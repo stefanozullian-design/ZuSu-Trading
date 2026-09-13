@@ -8,9 +8,11 @@ import {
   TradingState,
   UserRole,
   dec,
+  riskProfileFor,
   percentChange,
   toMoneyString,
   type CreatePortfolioInput,
+  type PortfolioObjective,
   type PortfolioSummary,
   type PositionDto,
 } from '@zusu/shared';
@@ -19,20 +21,6 @@ import { AppError } from '../../lib/errors.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { AccessControl, Principal } from '../rbac/access-control.js';
-
-/** Conservative starting limits for a new portfolio (§20). Tunable by an admin. */
-const DEFAULT_RISK_LIMITS = {
-  maxDailyLossPctOfCapital: 0.02,
-  maxWeeklyLossPctOfCapital: 0.05,
-  maxPositionSizePctOfCapital: 0.1,
-  maxPortfolioExposurePct: 60,
-  maxSectorExposurePct: 30,
-  maxSymbolExposurePct: 15,
-  maxOpenPositions: 10,
-  maxTradesPerDay: 20,
-  maxConsecutiveLosses: 4,
-  maxDrawdownPct: 15,
-} as const;
 
 export class PortfolioService {
   constructor(
@@ -52,14 +40,21 @@ export class PortfolioService {
    */
   async list(
     principal: Principal,
-    options: { includeClosed?: boolean } = {},
+    options: { includeClosed?: boolean; clientId?: string | null } = {},
   ): Promise<PortfolioSummary[]> {
     this.access.assertPermission(principal, Permission.PORTFOLIO_READ);
+
+    // `clientId: null` is a filter, not an absent one: "show me the portfolios
+    // with nobody assigned" is a real question, and the answer to it is how a
+    // person finds what they forgot to assign. `undefined` means no filter.
+    const ownerFilter = options.clientId === undefined ? {} : { clientId: options.clientId };
+
     const portfolios = await this.db.portfolio.findMany({
       where: {
         AND: [
           this.access.portfolioScope(principal),
           options.includeClosed ? {} : { isActive: true },
+          ownerFilter,
         ],
       },
       orderBy: [{ environment: 'asc' }, { name: 'asc' }],
@@ -134,12 +129,20 @@ export class PortfolioService {
 
     const initialCapital = dec(input.initialCapital);
 
+    // Money for a retirement thirty years out and money being traded this week
+    // cannot share a maximum drawdown. A portfolio with no stated objective
+    // keeps the widest profile, which is what every portfolio had before.
+    const objective = (input.objective ?? null) as PortfolioObjective | null;
+    const limits = riskProfileFor(objective);
+
     const portfolio = await this.db.$transaction(async (tx) => {
       const created = await tx.portfolio.create({
+        include: { client: { select: { id: true, name: true } } },
         data: {
           name: input.name,
           environment,
           clientId: input.clientId ?? null,
+          objective,
           baseCurrency: input.baseCurrency ?? 'USD',
           initialCapital: initialCapital.toFixed(8),
           cashBalance: initialCapital.toFixed(8),
@@ -152,21 +155,22 @@ export class PortfolioService {
           portfolioId: created.id,
           version: 1,
           isActive: true,
-          maxDailyLoss: percentOf(initialCapital, DEFAULT_RISK_LIMITS.maxDailyLossPctOfCapital),
-          maxWeeklyLoss: percentOf(initialCapital, DEFAULT_RISK_LIMITS.maxWeeklyLossPctOfCapital),
-          maxPositionSize: percentOf(
-            initialCapital,
-            DEFAULT_RISK_LIMITS.maxPositionSizePctOfCapital,
-          ),
-          maxPortfolioExposurePct: DEFAULT_RISK_LIMITS.maxPortfolioExposurePct,
-          maxSectorExposurePct: DEFAULT_RISK_LIMITS.maxSectorExposurePct,
-          maxSymbolExposurePct: DEFAULT_RISK_LIMITS.maxSymbolExposurePct,
-          maxOpenPositions: DEFAULT_RISK_LIMITS.maxOpenPositions,
-          maxTradesPerDay: DEFAULT_RISK_LIMITS.maxTradesPerDay,
-          maxConsecutiveLosses: DEFAULT_RISK_LIMITS.maxConsecutiveLosses,
-          maxDrawdownPct: DEFAULT_RISK_LIMITS.maxDrawdownPct,
+          maxDailyLoss: percentOf(initialCapital, limits.maxDailyLossPctOfCapital),
+          maxWeeklyLoss: percentOf(initialCapital, limits.maxWeeklyLossPctOfCapital),
+          maxPositionSize: percentOf(initialCapital, limits.maxPositionSizePctOfCapital),
+          maxPortfolioExposurePct: limits.maxPortfolioExposurePct,
+          maxSectorExposurePct: limits.maxSectorExposurePct,
+          maxSymbolExposurePct: limits.maxSymbolExposurePct,
+          maxOpenPositions: limits.maxOpenPositions,
+          maxTradesPerDay: limits.maxTradesPerDay,
+          maxConsecutiveLosses: limits.maxConsecutiveLosses,
+          maxDrawdownPct: limits.maxDrawdownPct,
           changedById: principal.id,
-          changeReason: 'Created with conservative defaults',
+          // Names the objective, so a person reading the risk history later
+          // can see why these particular numbers were the starting point.
+          changeReason: objective
+            ? `Created with the starting limits for ${objective}`
+            : 'Created with conservative defaults',
         },
       });
 
@@ -210,17 +214,32 @@ export class PortfolioService {
       return created;
     });
 
-    return this.summarise(portfolio, null);
+    // The owner, not null: a creation that reports the portfolio as unowned
+    // sends the caller straight back to fetch what it already had.
+    return this.summarise(portfolio, portfolio.client);
   }
 
   async update(
     principal: Principal,
     portfolioId: string,
-    patch: { name?: string; executionMode?: ExecutionMode; isActive?: boolean },
+    patch: {
+      name?: string;
+      executionMode?: ExecutionMode;
+      isActive?: boolean;
+      clientId?: string | null;
+      objective?: PortfolioObjective | null;
+    },
   ): Promise<PortfolioSummary> {
     const before = await this.access.assertPortfolioAccess(principal, portfolioId, {
       permission: Permission.PORTFOLIO_WRITE,
     });
+
+    // Reassigning an owner is a real correction — a portfolio set up under the
+    // wrong person — so it is allowed, and audited with both sides.
+    if (patch.clientId) {
+      const client = await this.db.client.findUnique({ where: { id: patch.clientId } });
+      if (!client) throw new AppError('NOT_FOUND', 'Owner not found');
+    }
 
     // Closing hides a portfolio from every list, and a hidden book you still
     // hold shares in is a book nobody is watching. Sell or transfer first.
@@ -243,8 +262,23 @@ export class PortfolioService {
           ...(patch.name === undefined ? {} : { name: patch.name }),
           ...(patch.executionMode === undefined ? {} : { executionMode: patch.executionMode }),
           ...(patch.isActive === undefined ? {} : { isActive: patch.isActive }),
+          ...(patch.clientId === undefined ? {} : { clientId: patch.clientId }),
+          ...(patch.objective === undefined ? {} : { objective: patch.objective }),
         },
+        include: { client: { select: { id: true, name: true } } },
       });
+
+      // The owner link is kept in step with the column. Leaving them to drift
+      // would make the reporting relation disagree with what the portfolio
+      // page shows about the same portfolio.
+      if (patch.clientId !== undefined) {
+        await tx.clientPortfolio.deleteMany({ where: { portfolioId, isPrimary: true } });
+        if (patch.clientId) {
+          await tx.clientPortfolio.create({
+            data: { clientId: patch.clientId, portfolioId, isPrimary: true },
+          });
+        }
+      }
       await this.audit.record(
         {
           action: AuditAction.PORTFOLIO_MODIFIED,
@@ -257,15 +291,26 @@ export class PortfolioService {
             name: before.name,
             executionMode: before.executionMode,
             isActive: before.isActive,
+            clientId: before.clientId,
+            objective: before.objective,
           },
-          after: { name: next.name, executionMode: next.executionMode, isActive: next.isActive },
+          after: {
+            name: next.name,
+            executionMode: next.executionMode,
+            isActive: next.isActive,
+            clientId: next.clientId,
+            objective: next.objective,
+          },
         },
         tx,
       );
       return next;
     });
 
-    return this.summarise(updated, null);
+    // The owner, not null. Passing null here reported every edited portfolio as
+    // unowned, which nobody noticed while the owner was invisible on screen and
+    // which would read as "renaming it cleared the owner" now that it is not.
+    return this.summarise(updated, updated.client);
   }
 
   /**
@@ -346,6 +391,7 @@ export class PortfolioService {
       environment: portfolio.environment as TradingEnvironment,
       clientId: portfolio.clientId,
       clientName: client?.name ?? null,
+      objective: portfolio.objective,
       baseCurrency: portfolio.baseCurrency,
       executionMode: portfolio.executionMode as ExecutionMode,
       tradingState: portfolio.tradingState as TradingState,

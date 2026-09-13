@@ -19,6 +19,7 @@ function portfolio(overrides: Partial<PortfolioSummary> = {}): PortfolioSummary 
     environment: 'DEMO',
     clientId: null,
     clientName: null,
+    objective: null,
     baseCurrency: 'USD',
     executionMode: 'MANUAL_APPROVAL',
     tradingState: 'ACTIVE',

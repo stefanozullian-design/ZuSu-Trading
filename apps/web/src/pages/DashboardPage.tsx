@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Pencil, Plus, X } from 'lucide-react';
+import { Check, Pencil, Plus, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { api, explainApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
+import { UNASSIGNED, useOwnerFilter } from '@/hooks/useOwnerFilter';
+import { OBJECTIVE_TITLES, ObjectivePicker, OwnerFilter, OwnerPicker } from '@/components/Owners';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -13,19 +15,25 @@ import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { AutomationConfig, PortfolioSummary } from '@/lib/types';
+import type { AutomationConfig, PortfolioObjective, PortfolioSummary } from '@/lib/types';
 
 export function DashboardPage() {
   const [showClosed, setShowClosed] = useState(false);
+  const { ownerId, setOwnerId, query: ownerQuery } = useOwnerFilter();
 
   const {
     data: portfolios,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['portfolios', showClosed],
+    // The owner filter is part of the key: without it, switching owner would
+    // show the previous person's portfolios from cache until the refetch
+    // landed — someone else's book under the name you just chose.
+    queryKey: ['portfolios', showClosed, ownerId],
     queryFn: () =>
-      api<PortfolioSummary[]>(`/api/portfolios?includeClosed=${showClosed ? 'true' : 'false'}`),
+      api<PortfolioSummary[]>(
+        `/api/portfolios?includeClosed=${showClosed ? 'true' : 'false'}${ownerQuery}`,
+      ),
     refetchInterval: 15_000,
   });
 
@@ -44,21 +52,35 @@ export function DashboardPage() {
   if (!portfolios?.length) {
     return (
       <div className="mx-auto w-full max-w-2xl space-y-3 p-6">
+        <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
         <Card>
           <CardHeader>
-            <CardTitle>No portfolios yet</CardTitle>
+            <CardTitle>{ownerId ? 'Nothing for this owner' : 'No portfolios yet'}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Nothing has been shared with this account. Make one below and it becomes yours.
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            {/*
+              An empty list means two different things, and saying the wrong one
+              sends a person looking for a portfolio that is simply filtered out.
+            */}
+            {ownerId ? (
+              <p>
+                This person has no portfolios here yet. Choose <strong>Everyone</strong> above to
+                see the rest, or make one for them below.
+              </p>
+            ) : (
+              <p>Nothing has been shared with this account. Make one below and it becomes yours.</p>
+            )}
           </CardContent>
         </Card>
-        <NewPortfolio />
+        <NewPortfolio defaultOwnerId={ownerId === UNASSIGNED ? null : ownerId} />
       </div>
     );
   }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6">
+      <OwnerFilter ownerId={ownerId} onChange={setOwnerId} />
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {portfolios.map((portfolio) => (
@@ -67,14 +89,25 @@ export function DashboardPage() {
               type="button"
               onClick={() => setSelectedId(portfolio.id)}
               className={cn(
-                'shrink-0 rounded-md border px-3 py-1.5 text-sm transition-colors',
+                'shrink-0 rounded-md border px-3 py-1.5 text-left text-sm transition-colors',
                 portfolio.id === selectedId
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border text-muted-foreground hover:bg-muted',
               )}
             >
-              {portfolio.name}
-              <span className="ml-2 text-[10px] uppercase opacity-70">{portfolio.environment}</span>
+              <span className="flex items-center gap-2">
+                {portfolio.name}
+                <span className="text-[10px] uppercase opacity-70">{portfolio.environment}</span>
+              </span>
+              {/*
+                Whose it is, on the tab itself. Two people can each have a
+                "Retirement", so the name alone no longer identifies a book —
+                and picking the wrong one is not a small mistake here.
+              */}
+              <span className="mt-0.5 block text-[10px] opacity-70">
+                {portfolio.clientName ?? 'Unassigned'}
+                {portfolio.objective ? ` · ${OBJECTIVE_TITLES[portfolio.objective]}` : ''}
+              </span>
             </button>
           ))}
         </div>
@@ -88,7 +121,12 @@ export function DashboardPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <NewPortfolio />
+        {/*
+          Filtered to one person, "New portfolio" means one for them. Creating
+          it unassigned would make it vanish from the very list being looked
+          at, which reads as the creation having failed.
+        */}
+        <NewPortfolio defaultOwnerId={ownerId === UNASSIGNED ? null : ownerId} />
         {selected && <ManagePortfolio portfolio={selected} />}
       </div>
 
@@ -284,26 +322,39 @@ function AutomationPanel() {
  * worth pausing over, and it is fixed for the portfolio's life — so it is
  * stated here rather than buried in a tooltip.
  */
-function NewPortfolio() {
+function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | null }) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [capital, setCapital] = useState('');
+  const [ownerId, setOwnerId] = useState<string | null>(defaultOwnerId);
+  const [objective, setObjective] = useState<PortfolioObjective | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: () =>
       api<PortfolioSummary>('/api/portfolios', {
         method: 'POST',
-        body: { name, environment: 'DEMO', initialCapital: capital, baseCurrency: 'USD' },
+        body: {
+          name,
+          environment: 'DEMO',
+          initialCapital: capital,
+          baseCurrency: 'USD',
+          // Omitted rather than sent as null: the API treats an absent owner
+          // and an absent objective as "not stated", which is the truth.
+          ...(ownerId ? { clientId: ownerId } : {}),
+          ...(objective ? { objective } : {}),
+        },
       }),
     onSuccess: async () => {
       setError(null);
       setName('');
       setCapital('');
+      setObjective(null);
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      await queryClient.invalidateQueries({ queryKey: ['owners'] });
     },
     onError: (err: Error) => setError(explainApiError(err)),
   });
@@ -312,7 +363,17 @@ function NewPortfolio() {
 
   if (!open) {
     return (
-      <Button variant="outline" size="sm" className="w-fit" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        onClick={() => {
+          // Read the filter at the moment the form opens, not at mount: the
+          // person may have changed owner since this button first rendered.
+          setOwnerId(defaultOwnerId);
+          setOpen(true);
+        }}
+      >
         <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
         New portfolio
       </Button>
@@ -360,9 +421,15 @@ function NewPortfolio() {
           that can reach a real market. A portfolio is bound to its environment for life, so this
           cannot be switched later — which is what stops demo credentials ever reaching real money.
         </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <OwnerPicker id="new-portfolio-owner" value={ownerId} onChange={setOwnerId} />
+          <ObjectivePicker id="new-portfolio-objective" value={objective} onChange={setObjective} />
+        </div>
+
         <p className="text-[11px] text-muted-foreground">
-          Starting cash also sets the opening risk limits: 2% of it as the daily loss limit, 10% as
-          the largest single position.
+          {objective === null
+            ? 'Starting cash sets the opening risk limits: 2% of it as the daily loss limit, 10% as the largest single position. Saying what the portfolio is for changes those starting limits.'
+            : `Starting cash and "${OBJECTIVE_TITLES[objective]}" together set the opening risk limits. They are a starting point, not a ceiling you are stuck with — an administrator can change any of them afterwards.`}
         </p>
 
         {error && (
@@ -403,16 +470,22 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const [renaming, setRenaming] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
   const [name, setName] = useState(portfolio.name);
   const [error, setError] = useState<string | null>(null);
 
   const patch = useMutation({
-    mutationFn: (body: { name?: string; isActive?: boolean }) =>
-      api<PortfolioSummary>(`/api/portfolios/${portfolio.id}`, { method: 'PATCH', body }),
+    mutationFn: (body: {
+      name?: string;
+      isActive?: boolean;
+      clientId?: string | null;
+      objective?: PortfolioObjective | null;
+    }) => api<PortfolioSummary>(`/api/portfolios/${portfolio.id}`, { method: 'PATCH', body }),
     onSuccess: async () => {
       setError(null);
       setRenaming(false);
       await queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      await queryClient.invalidateQueries({ queryKey: ['owners'] });
     },
     onError: (err: Error) => setError(explainApiError(err)),
   });
@@ -451,6 +524,46 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
     );
   }
 
+  if (reassigning) {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Who it belongs to, and what it is for</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <OwnerPicker
+              id="manage-portfolio-owner"
+              value={portfolio.clientId}
+              onChange={(clientId) => patch.mutate({ clientId })}
+            />
+            <ObjectivePicker
+              id="manage-portfolio-objective"
+              value={portfolio.objective}
+              onChange={(objective) => patch.mutate({ objective })}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {/*
+              Said plainly, because the opposite is the reasonable assumption:
+              the objective picks the limits a portfolio *starts* with, and
+              changing it later is a relabelling. It would be worse to quietly
+              rewrite the limits of a portfolio that is already holding
+              something.
+            */}
+            Changing what it is for relabels this portfolio. It does not rewrite risk limits that
+            are already in force — those are on the Risk page, and only an administrator can change
+            them.
+          </p>
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
+          <Button size="sm" variant="ghost" onClick={() => setReassigning(false)}>
+            Done
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button
@@ -463,6 +576,11 @@ function ManagePortfolio({ portfolio }: { portfolio: PortfolioSummary }) {
       >
         <Pencil className="mr-1 h-3.5 w-3.5" aria-hidden />
         Rename
+      </Button>
+
+      <Button size="sm" variant="outline" onClick={() => setReassigning(true)}>
+        <Users className="mr-1 h-3.5 w-3.5" aria-hidden />
+        Owner &amp; purpose
       </Button>
 
       {portfolio.isActive ? (

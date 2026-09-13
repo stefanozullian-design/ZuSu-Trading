@@ -67,9 +67,13 @@ test.describe('the approval queue', () => {
     await signIn(page, 'manager');
     await page.getByRole('link', { name: 'Trading', exact: true }).click();
 
-    // The queue's heading counts what is owed a decision. Whether it is empty
-    // depends on what earlier specs produced; that it waits does not.
+    // Wait for the count to be a count. The heading used to render "0
+    // recommendations" while the queue was still loading, so reading the
+    // Approve buttons here could see an empty queue that was about to fill —
+    // the test then asserted the empty-state text against a full queue and
+    // failed intermittently, which looked like a flake and was not.
     await expect(page.getByRole('heading', { name: /awaiting a decision/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /loading what is awaiting/i })).toHaveCount(0);
     const waiting = await page.getByRole('button', { name: 'Approve', exact: true }).count();
     if (waiting === 0) {
       await expect(page.getByText(/nothing sweeps this queue automatically/i)).toBeVisible();

@@ -174,7 +174,10 @@ async function seedUsers(clientId: string) {
 
 async function seedPortfolio(clientId: string, adminId: string) {
   const existing = await db.portfolio.findUnique({
-    where: { name_environment: { name: 'Demo Portfolio', environment: 'DEMO' } },
+    where: {
+      // Names are unique per owner now, so the key carries the owner too.
+      clientId_name_environment: { clientId, name: 'Demo Portfolio', environment: 'DEMO' },
+    },
   });
   if (existing) return existing;
 

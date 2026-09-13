@@ -57,6 +57,13 @@ export async function registerPortfolioRoutes(
             .enum(['true', 'false'])
             .default('false')
             .transform((v) => v === 'true'),
+          /**
+           * The owner to filter by. The literal string `none` asks for the
+           * portfolios with nobody assigned — a real question, and the only
+           * way to find the ones somebody forgot to assign. Omitted means no
+           * filter at all, which is not the same thing.
+           */
+          ownerId: z.union([z.literal('none'), z.string().uuid()]).optional(),
         }),
         response: { 200: z.array(portfolioSummarySchema) },
       },
@@ -65,6 +72,9 @@ export async function registerPortfolioRoutes(
       reply.send(
         await container.portfolios.list(principalOf(request), {
           includeClosed: request.query.includeClosed,
+          ...(request.query.ownerId === undefined
+            ? {}
+            : { clientId: request.query.ownerId === 'none' ? null : request.query.ownerId }),
         }),
       ),
   );
@@ -75,7 +85,7 @@ export async function registerPortfolioRoutes(
       preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
       schema: {
         tags: ['portfolios'],
-        summary: 'Create a portfolio with conservative default risk limits',
+        summary: 'Create a portfolio, with starting risk limits set by its objective',
         body: createPortfolioSchema,
         response: { 201: portfolioSummarySchema },
       },
@@ -107,7 +117,8 @@ export async function registerPortfolioRoutes(
       preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
       schema: {
         tags: ['portfolios'],
-        summary: 'Rename a portfolio, change its execution mode or deactivate it',
+        summary:
+          'Rename a portfolio, reassign its owner or objective, change its execution mode, or deactivate it',
         params: idParams,
         body: updatePortfolioSchema,
         response: { 200: portfolioSummarySchema },
