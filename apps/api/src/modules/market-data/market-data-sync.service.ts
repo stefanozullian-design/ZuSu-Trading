@@ -69,6 +69,14 @@ export interface SyncOptions {
   pacingMs?: number;
   /** Called before each provider request, so a script can show progress. */
   onProgress?: (symbol: string, index: number, total: number) => void;
+  /**
+   * Called as each symbol finishes.
+   *
+   * A paced run takes minutes, and batching every result until the end leaves
+   * the reader watching a stalled-looking line with no idea whether anything
+   * is working.
+   */
+  onResult?: (result: SymbolSyncResult) => void;
 }
 
 export class MarketDataSyncService {
@@ -113,7 +121,9 @@ export class MarketDataSyncService {
     for (const [index, symbol] of symbols.entries()) {
       if (index > 0 && pacingMs > 0) await delay(pacingMs);
       options.onProgress?.(symbol, index, symbols.length);
-      results.push(await this.syncSymbol(provider.name, symbol, timeframe, from, to));
+      const result = await this.syncSymbol(provider.name, symbol, timeframe, from, to);
+      options.onResult?.(result);
+      results.push(result);
     }
 
     const stored = results.reduce((total, result) => total + result.stored, 0);

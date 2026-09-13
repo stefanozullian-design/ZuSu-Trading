@@ -49,6 +49,19 @@ async function main(): Promise<void> {
       `${plural(minutes, 'minute', 'minutes')}.\n`,
   );
 
+  const describe = (result: (typeof run)['results'][number]): string => {
+    switch (result.status) {
+      case 'STORED':
+        return `${String(result.stored)} bars`;
+      case 'NOTHING_RETURNED':
+        return 'no data for this timeframe';
+      case 'REJECTED':
+        return `rejected (${String(result.findings.length)} findings)`;
+      default:
+        return 'failed';
+    }
+  };
+
   const run = await container.marketDataSync.sync({
     timeframe,
     days,
@@ -57,22 +70,15 @@ async function main(): Promise<void> {
     onProgress: (symbol, index, total) => {
       process.stdout.write(`  [${String(index + 1)}/${String(total)}] ${symbol.padEnd(6)} `);
     },
+    onResult: (result) => {
+      // On the same line the progress marker opened, so each symbol reads as
+      // one row rather than a marker now and an answer several minutes later.
+      console.log(describe(result));
+      if (result.status === 'FAILED' || result.status === 'REJECTED') {
+        console.log(`           ${result.detail}`);
+      }
+    },
   });
-
-  for (const result of run.results) {
-    const label =
-      result.status === 'STORED'
-        ? `${String(result.stored)} bars`
-        : result.status === 'NOTHING_RETURNED'
-          ? 'no data for this timeframe'
-          : result.status === 'REJECTED'
-            ? `rejected (${String(result.findings.length)} findings)`
-            : 'failed';
-    console.log(`${result.symbol.padEnd(6)} ${label}`);
-    if (result.status === 'FAILED' || result.status === 'REJECTED') {
-      console.log(`         ${result.detail}`);
-    }
-  }
 
   console.log(`\n${run.summary}`);
 
