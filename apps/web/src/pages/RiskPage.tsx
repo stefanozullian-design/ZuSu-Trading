@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Scale, ShieldAlert } from 'lucide-react';
+import { Calculator, Pencil, Scale, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EditRiskLimits } from '@/components/EditRiskLimits';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/hooks/useAuth';
 import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { usePortfolios } from '@/hooks/usePortfolios';
 import { api, explainApiError } from '@/lib/api';
@@ -28,7 +30,9 @@ export function RiskPage() {
   const [entryPrice, setEntryPrice] = useState('100');
   const [stopPrice, setStopPrice] = useState('98');
   const [riskPct, setRiskPct] = useState('1');
+  const { can } = useAuth();
   const [assessment, setAssessment] = useState<RiskAssessment | null>(null);
+  const [editingLimits, setEditingLimits] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Scoped to the owner chosen on the dashboard. A selector that offered
@@ -160,8 +164,14 @@ export function RiskPage() {
 
           {limits && (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex-row items-center justify-between gap-2">
                 <CardTitle>Limits, version {limits.version}</CardTitle>
+                {can('risk:write') && !editingLimits && (
+                  <Button size="sm" variant="outline" onClick={() => setEditingLimits(true)}>
+                    <Pencil className="mr-1 h-3.5 w-3.5" aria-hidden />
+                    Change
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-1 text-xs">
                 <Limit label="Max daily loss" value={money(limits.maxDailyLoss)} />
@@ -174,6 +184,24 @@ export function RiskPage() {
                 <Limit label="Trades per day" value={String(limits.maxTradesPerDay)} />
                 <Limit label="Consecutive losses" value={String(limits.maxConsecutiveLosses)} />
                 <Limit label="Max drawdown" value={`${limits.maxDrawdownPct}%`} />
+
+                {editingLimits ? (
+                  <EditRiskLimits
+                    portfolioId={id}
+                    limits={limits}
+                    onDone={() => setEditingLimits(false)}
+                  />
+                ) : (
+                  !can('risk:write') && (
+                    // Said rather than left as an absent button. Somebody
+                    // looking for this needs to know it exists and who may use
+                    // it, not conclude the platform cannot do it.
+                    <p className="border-t border-border pt-2 text-[11px] text-muted-foreground">
+                      Changing these needs an administrator. A trading account that can raise its
+                      own limits has limits in name only.
+                    </p>
+                  )
+                )}
               </CardContent>
             </Card>
           )}

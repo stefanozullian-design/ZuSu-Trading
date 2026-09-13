@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers';
+import { signIn, signInAdmin } from './helpers';
 
 /**
  * The risk engine, end to end.
@@ -20,6 +20,42 @@ async function size(page: import('@playwright/test').Page, stop: string): Promis
     page.getByRole('button', { name: /size and check/i }).click(),
   ]);
 }
+
+test.describe('changing the limits', () => {
+  test('a manager is told who may change them, and gets no control', async ({ page }) => {
+    await signIn(page, 'manager');
+    await page.getByRole('link', { name: 'Risk', exact: true }).click();
+    await expect(page.getByText(/limits, version/i)).toBeVisible();
+
+    // Said rather than left as an absent button: somebody looking for this
+    // needs to know it exists and who may use it, not conclude the platform
+    // cannot do it.
+    await expect(page.getByRole('button', { name: /^Change$/ })).toHaveCount(0);
+    await expect(page.getByText(/needs an administrator/i)).toBeVisible();
+  });
+
+  test('an administrator changes them, and the old version is superseded', async ({ page }) => {
+    await signInAdmin(page);
+    await page.getByRole('link', { name: 'Risk', exact: true }).click();
+    await expect(page.getByText(/limits, version 1/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /^Change$/ }).click();
+    await page.getByLabel('Max daily loss').fill('4321.00');
+
+    // A reason is required for the same purpose a rejection needs one.
+    const save = page.getByRole('button', { name: /save new version/i });
+    await expect(save).toBeDisabled();
+    await page
+      .getByLabel(/reason for the change/i)
+      .fill('Holdings imported after the opening cash');
+    await expect(save).toBeEnabled();
+
+    await Promise.all([page.waitForResponse((r) => r.request().method() === 'PUT'), save.click()]);
+
+    await expect(page.getByText(/limits, version 2/i)).toBeVisible();
+    await expect(page.getByText(/4,321/)).toBeVisible();
+  });
+});
 
 test.describe('sizing', () => {
   test('sizes from the distance to the stop and says what bound it', async ({ page }) => {

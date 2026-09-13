@@ -328,6 +328,27 @@ and orders with their fills, fees and slippage against the price the decision
 was based on. A refused order is kept with its reason, so "why did this not
 trade" always has an answer.
 
+### Changing risk limits
+
+`PUT /api/risk/portfolios/:id/limits` is administrator-only, and the Risk page
+offers the control only to an administrator — a trading account that can raise
+its own limits has limits in name only. Everybody else is told who may change
+them, rather than left to conclude from an absent button that the platform
+cannot.
+
+Every change writes a new version and marks the old one inactive. Nothing is
+overwritten: the limits in force when something was refused have to stay
+readable, or the refusal cannot be explained afterwards. A reason of at least
+ten characters is required for the same purpose a rejection needs one — the
+numbers are easy to read later and impossible to interpret without knowing why
+they moved.
+
+This matters most after an import. Opening limits are derived from a
+portfolio's starting capital, and importing holdings adds value without adding
+cash — so a portfolio created with $1,000 and then filled with $18,000 of
+shares carries a $15 daily loss limit and an $80 maximum position until
+somebody changes them.
+
 ### The Performance page
 
 `/performance` reports both return measures side by side:

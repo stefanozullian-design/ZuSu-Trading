@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Permission, dec, decimalString, killSwitchRequestSchema } from '@zusu/shared';
+import {
+  AuditAction,
+  Permission,
+  TradingEnvironment,
+  changeRiskLimitsSchema,
+  dec,
+  decimalString,
+  killSwitchRequestSchema,
+} from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
 import { principalOf } from '../../plugins/auth.js';
 
@@ -99,6 +107,104 @@ export async function registerRiskRoutes(
         maxTradesPerDay: limits.maxTradesPerDay,
         maxConsecutiveLosses: limits.maxConsecutiveLosses,
         maxDrawdownPct: limits.maxDrawdownPct.toString(),
+      });
+    },
+  );
+
+  typed.put(
+    '/portfolios/:id/limits',
+    {
+      preHandler: app.requirePermission(Permission.RISK_WRITE),
+      schema: {
+        tags: ['risk'],
+        summary: 'Change a portfolio’s risk limits (administrators only)',
+        description:
+          'Writes a new version rather than editing the active one: the old numbers, who ' +
+          'changed them and why all stay. A reason is required — a limit is the number that ' +
+          'will one day stop a loss, and a change nobody explained is one nobody can review.',
+        params: idParams,
+        body: changeRiskLimitsSchema,
+        response: { 200: riskLimitsSchema },
+      },
+    },
+    async (request, reply) => {
+      const principal = principalOf(request);
+      const portfolio = await container.access.assertPortfolioAccess(principal, request.params.id, {
+        permission: Permission.RISK_WRITE,
+      });
+
+      const { reason, ...limits } = request.body;
+
+      const next = await container.db.$transaction(async (tx) => {
+        const current = await tx.riskLimit.findFirst({
+          where: { portfolioId: portfolio.id, isActive: true },
+          orderBy: { version: 'desc' },
+        });
+
+        // Superseded, not overwritten. The version that was in force when
+        // something was refused has to remain readable afterwards, or the
+        // refusal cannot be explained.
+        await tx.riskLimit.updateMany({
+          where: { portfolioId: portfolio.id, isActive: true },
+          data: { isActive: false },
+        });
+
+        const created = await tx.riskLimit.create({
+          data: {
+            portfolioId: portfolio.id,
+            version: (current?.version ?? 0) + 1,
+            isActive: true,
+            ...limits,
+            changedById: principal.id,
+            changeReason: reason,
+          },
+        });
+
+        await container.audit.record(
+          {
+            action: AuditAction.RISK_LIMIT_CHANGED,
+            actorUserId: principal.id,
+            entityType: 'RiskLimit',
+            entityId: created.id,
+            portfolioId: portfolio.id,
+            environment: portfolio.environment as TradingEnvironment,
+            before: current
+              ? {
+                  version: current.version,
+                  maxDailyLoss: current.maxDailyLoss.toString(),
+                  maxPositionSize: current.maxPositionSize.toString(),
+                  maxTradesPerDay: current.maxTradesPerDay,
+                  maxDrawdownPct: current.maxDrawdownPct.toString(),
+                }
+              : null,
+            after: {
+              version: created.version,
+              maxDailyLoss: created.maxDailyLoss.toString(),
+              maxPositionSize: created.maxPositionSize.toString(),
+              maxTradesPerDay: created.maxTradesPerDay,
+              maxDrawdownPct: created.maxDrawdownPct.toString(),
+              reason,
+            },
+          },
+          tx,
+        );
+
+        return created;
+      });
+
+      return reply.send({
+        portfolioId: next.portfolioId,
+        version: next.version,
+        maxDailyLoss: next.maxDailyLoss.toString(),
+        maxWeeklyLoss: next.maxWeeklyLoss.toString(),
+        maxPositionSize: next.maxPositionSize.toString(),
+        maxPortfolioExposurePct: next.maxPortfolioExposurePct.toString(),
+        maxSectorExposurePct: next.maxSectorExposurePct.toString(),
+        maxSymbolExposurePct: next.maxSymbolExposurePct.toString(),
+        maxOpenPositions: next.maxOpenPositions,
+        maxTradesPerDay: next.maxTradesPerDay,
+        maxConsecutiveLosses: next.maxConsecutiveLosses,
+        maxDrawdownPct: next.maxDrawdownPct.toString(),
       });
     },
   );

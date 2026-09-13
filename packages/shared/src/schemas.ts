@@ -158,6 +158,20 @@ export const riskLimitsSchema = z.object({
 });
 export type RiskLimitsInput = z.infer<typeof riskLimitsSchema>;
 
+/**
+ * Changing a portfolio's risk limits.
+ *
+ * The reason is required and not decorative. A limit is the number that will
+ * one day stop a loss, and "why was it raised" is the only question worth
+ * asking afterwards — a change nobody explained is one nobody can review.
+ * Every change writes a new version rather than editing the old one, so the
+ * answer survives the next change too.
+ */
+export const changeRiskLimitsSchema = riskLimitsSchema.extend({
+  reason: z.string().trim().min(10).max(500),
+});
+export type ChangeRiskLimitsInput = z.infer<typeof changeRiskLimitsSchema>;
+
 export const portfolioObjectiveSchema = z.enum(enumValues(PortfolioObjective));
 
 export const createPortfolioSchema = z.object({
