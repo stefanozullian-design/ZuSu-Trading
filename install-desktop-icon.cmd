@@ -19,9 +19,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$s.IconLocation = (Join-Path $here 'assets\zusu.ico') + ',0';" ^
   "$s.Description = 'Start ZuSu Trading';" ^
   "$s.Save();" ^
+  "$updateLink = Join-Path $desktop 'Update ZuSu.lnk';" ^
+  "$u = $shell.CreateShortcut($updateLink);" ^
+  "$u.TargetPath = Join-Path $here 'update-zusu.cmd';" ^
+  "$u.WorkingDirectory = $here;" ^
+  "$u.IconLocation = (Join-Path $here 'assets\zusu.ico') + ',0';" ^
+  "$u.Description = 'Get the newest version of ZuSu Trading';" ^
+  "$u.Save();" ^
   "Write-Host '';" ^
-  "Write-Host ('  Done. There is now a ZuSu Trading icon on your desktop.');" ^
-  "Write-Host ('  ' + $link);"
+  "Write-Host ('  Done. Two icons are now on your desktop:');" ^
+  "Write-Host ('    ZuSu Trading  - starts it');" ^
+  "Write-Host ('    Update ZuSu   - fetches the newest version');"
 
 if errorlevel 1 (
   echo.

@@ -167,6 +167,34 @@ function step(label, args, env) {
   }
 }
 
+/**
+ * Says whether newer code exists, without ever getting in the way.
+ *
+ * Deliberately not an offer to install it: starting the app and changing the
+ * code it runs are different acts, and one should not happen because somebody
+ * wanted the other.
+ */
+function reportUpdates() {
+  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000 });
+
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (branch.status !== 0) return; // Not a clone. Nothing to compare against.
+
+  const name = (branch.stdout ?? '').trim();
+  if (git(['fetch', 'origin', name]).status !== 0) return; // Offline. Fine.
+
+  const behind = git(['rev-list', '--count', `HEAD..origin/${name}`]);
+  const count = Number((behind.stdout ?? '').trim());
+  if (!Number.isInteger(count) || count <= 0) return;
+
+  console.log(
+    `  ─────────────────────────────────────────────────────────\n` +
+      `  A newer ZuSu is available (${String(count)} change${count === 1 ? '' : 's'}).\n` +
+      `  Close this window and double-click "Update ZuSu" to get it.\n` +
+      `  ─────────────────────────────────────────────────────────\n`,
+  );
+}
+
 async function main() {
   const env = loadEnvFor(root, process.env);
 
@@ -273,6 +301,11 @@ async function main() {
   console.log('  Closing it stops ZuSu.\n');
 
   openBrowser(webUrl());
+
+  // Last, and never blocking: a person looking at an old version has no way to
+  // tell, and "I double-clicked the icon" is a reasonable thing to believe
+  // updates something. Offline, or a slow remote, simply says nothing.
+  reportUpdates();
 }
 
 // Only run when executed, so the pure helpers above can be imported by tests.

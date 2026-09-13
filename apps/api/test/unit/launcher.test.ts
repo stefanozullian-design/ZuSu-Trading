@@ -22,6 +22,10 @@ const tools = (await import(join(repoRoot, 'scripts/env-tools.mjs'))) as {
   killTree: (child: { pid?: number; exitCode: number | null; signalCode: string | null }) => void;
 };
 
+const updater = (await import(join(repoRoot, 'scripts/update.mjs'))) as {
+  localEdits: (porcelain: string) => string[];
+};
+
 const launcher = (await import(join(repoRoot, 'scripts/start.mjs'))) as {
   WEB_PORT: number;
   apiPort: (env: Record<string, string | undefined>) => number;
@@ -103,6 +107,27 @@ function running(pid: number): boolean {
     return false; // ps exits non-zero when there is no such process at all.
   }
 }
+
+describe('the updater', () => {
+  it('treats a modified tracked file as in the way', () => {
+    expect(updater.localEdits(' M package.json\nM  README.md')).toEqual([
+      'package.json',
+      'README.md',
+    ]);
+  });
+
+  it('ignores untracked files, which a pull does not touch', () => {
+    // A stray note or an exported CSV sitting in the folder is not a reason to
+    // refuse an update, and refusing on one would train a person to expect the
+    // updater to fail.
+    expect(updater.localEdits('?? notes.txt\n M src/app.ts')).toEqual(['src/app.ts']);
+  });
+
+  it('reports nothing for a clean checkout', () => {
+    expect(updater.localEdits('')).toEqual([]);
+    expect(updater.localEdits('\n  \n')).toEqual([]);
+  });
+});
 
 describe('stopping it', () => {
   it('kills the grandchildren, not just the shell it spawned', async () => {

@@ -46,9 +46,15 @@ meant to be used day to day:
 | Windows       | `start-zusu.cmd` |
 | macOS / Linux | `start-zusu.sh`  |
 
-Run `install-desktop-icon.cmd` once on Windows to put a ZuSu icon on the
-desktop; it creates a shortcut and nothing else, so deleting the icon undoes
-it. `npm start` runs exactly the same thing from a terminal.
+Run `install-desktop-icon.cmd` once on Windows. It puts two icons on the
+desktop — **ZuSu Trading** starts it, **Update ZuSu** fetches the newest
+version — and creates nothing but shortcuts, so deleting them undoes it.
+`npm start` runs the launcher from a terminal.
+
+Updating is its own icon rather than part of starting: those are different
+acts, and an update that arrives unannounced while somebody is looking at
+positions is the wrong kind of surprise on a trading tool. The launcher says
+when newer code exists and leaves the decision alone.
 
 The launcher rebuilds the shared package, applies any migration that arrived
 with a `git pull`, starts both halves, waits for each to answer, and opens a
