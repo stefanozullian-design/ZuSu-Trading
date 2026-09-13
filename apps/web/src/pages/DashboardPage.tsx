@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pencil, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, explainApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -28,11 +29,9 @@ export function DashboardPage() {
     refetchInterval: 15_000,
   });
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectedId && portfolios?.length) setSelectedId(portfolios[0]?.id ?? null);
-  }, [portfolios, selectedId]);
+  // Shared with every other page, so clicking through to Trading keeps the
+  // book you were looking at.
+  const { selectedId, select: setSelectedId } = useSelectedPortfolio(portfolios);
 
   const selected = portfolios?.find((p) => p.id === selectedId) ?? null;
 

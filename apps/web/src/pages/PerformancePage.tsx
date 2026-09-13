@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import type { JournalEntry, PerformanceReport, PortfolioSummary } from '@/lib/types';
@@ -26,7 +27,6 @@ export function PerformancePage() {
   const queryClient = useQueryClient();
   const canWrite = can('portfolio:write');
 
-  const [portfolioId, setPortfolioId] = useState('');
   const [from, setFrom] = useState(defaultFrom());
   const [to, setTo] = useState(today());
   const [amount, setAmount] = useState('');
@@ -39,7 +39,7 @@ export function PerformancePage() {
     queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
   });
 
-  const id = portfolioId || (portfolios?.[0]?.id ?? '');
+  const { selectedId: id, select: setPortfolioId } = useSelectedPortfolio(portfolios);
 
   const { data: report } = useQuery({
     queryKey: ['performance', id, from, to],

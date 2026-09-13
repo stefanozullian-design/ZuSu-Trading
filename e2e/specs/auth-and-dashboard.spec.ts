@@ -110,6 +110,30 @@ test.describe('the dashboard', () => {
     await expect(page.getByRole('button', { name: /E2E Renamed/ })).toBeVisible();
   });
 
+  test('keeps the chosen portfolio when you change page', async ({ page }) => {
+    // Each page used to keep its own selection, so picking a book here and
+    // clicking through to Trading landed you on whichever one came first.
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Sticky Book');
+    await page.getByLabel('Starting cash').fill('7500');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().endsWith('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /E2E Sticky Book/ }).click();
+
+    await page.getByRole('link', { name: 'Trading', exact: true }).click();
+    await expect(page.getByLabel('Portfolio', { exact: true })).toHaveValue(/.+/);
+    await expect(page.locator('select')).toContainText('E2E Sticky Book');
+    const onTrading = await page.locator('select').inputValue();
+
+    await page.getByRole('link', { name: 'Risk', exact: true }).click();
+    await expect(page.locator('select').first()).toHaveValue(onTrading);
+  });
+
   test('states plainly whether anything trades on its own', async ({ page }) => {
     // The one number on the dashboard worth being unambiguous about, and it is
     // read from the live configurations rather than asserted in prose.

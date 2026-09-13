@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -52,7 +53,6 @@ export function StrategiesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<StrategyEvaluation | null>(null);
-  const [portfolioId, setPortfolioId] = useState('');
 
   const { data: strategies } = useQuery({
     queryKey: ['strategies'],
@@ -69,7 +69,8 @@ export function StrategiesPage() {
     queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
   });
 
-  const effectivePortfolioId = portfolioId || (portfolios?.[0]?.id ?? '');
+  const { selectedId: effectivePortfolioId, select: setPortfolioId } =
+    useSelectedPortfolio(portfolios);
 
   const { data: signals } = useQuery({
     queryKey: ['signals', effectivePortfolioId],

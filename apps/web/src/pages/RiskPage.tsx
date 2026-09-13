@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -28,7 +29,6 @@ import type {
  * Nothing here places anything. Assessing is a read.
  */
 export function RiskPage() {
-  const [portfolioId, setPortfolioId] = useState('');
   const [symbol, setSymbol] = useState('AAPL');
   const [entryPrice, setEntryPrice] = useState('100');
   const [stopPrice, setStopPrice] = useState('98');
@@ -41,7 +41,7 @@ export function RiskPage() {
     queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
   });
 
-  const id = portfolioId || (portfolios?.[0]?.id ?? '');
+  const { selectedId: id, select: setPortfolioId } = useSelectedPortfolio(portfolios);
 
   const { data: limits } = useQuery({
     queryKey: ['risk-limits', id],

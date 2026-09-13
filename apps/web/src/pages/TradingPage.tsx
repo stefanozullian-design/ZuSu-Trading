@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { api, explainApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -37,7 +38,6 @@ export function TradingPage() {
   const queryClient = useQueryClient();
   const canApprove = can('signal:approve');
 
-  const [portfolioId, setPortfolioId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -49,7 +49,7 @@ export function TradingPage() {
     queryFn: () => api<PortfolioSummary[]>('/api/portfolios'),
   });
 
-  const id = portfolioId || (portfolios?.[0]?.id ?? '');
+  const { selectedId: id, select: setPortfolioId } = useSelectedPortfolio(portfolios);
 
   const { data: signals } = useQuery({
     queryKey: ['signals', id],
