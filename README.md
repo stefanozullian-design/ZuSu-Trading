@@ -36,6 +36,27 @@ npm run dev      # API on :4000, web client on :5173
 
 `npm run setup` refuses to touch an existing `.env`, so it is safe to re-run.
 
+### Starting it without a terminal
+
+Once setup has run, ZuSu can be started by double-clicking, which is how it is
+meant to be used day to day:
+
+| Platform      | Double-click     |
+| ------------- | ---------------- |
+| Windows       | `start-zusu.cmd` |
+| macOS / Linux | `start-zusu.sh`  |
+
+Run `install-desktop-icon.cmd` once on Windows to put a ZuSu icon on the
+desktop; it creates a shortcut and nothing else, so deleting the icon undoes
+it. `npm start` runs exactly the same thing from a terminal.
+
+The launcher rebuilds the shared package, applies any migration that arrived
+with a `git pull`, starts both halves, waits for each to answer, and opens a
+browser. It stops on the first failure and explains it in plain words — a
+database that is not running, a password that no longer matches, a port already
+taken. The window it runs in is where errors appear; closing it stops ZuSu,
+including the servers underneath, which `npm run dev` historically did not.
+
 The `allowScripts` block in `package.json` pre-approves the four packages whose
 install scripts npm 11 blocks by default — Prisma's engines and esbuild's
 binary. Without it `npm install` reports success while leaving those unbuilt,
@@ -292,6 +313,7 @@ container, so the browser sees a single origin.
 
 | Command                | What it does                                              |
 | ---------------------- | --------------------------------------------------------- |
+| `npm start`            | Everything, as the double-click launcher does it          |
 | `npm run dev`          | API and web client in watch mode                          |
 | `npm test`             | 153 tests across shared, API (unit + integration) and web |
 | `npm run typecheck`    | TypeScript across all three packages                      |

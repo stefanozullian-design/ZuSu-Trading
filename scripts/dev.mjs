@@ -16,7 +16,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFor, npmCommandLine, spawnOptions } from './env-tools.mjs';
+import { killTree, loadEnvFor, npmCommandLine, supervisedOptions } from './env-tools.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const env = loadEnvFor(root, process.env);
@@ -27,14 +27,17 @@ let stopping = false;
 function stopAll(code) {
   if (stopping) return;
   stopping = true;
-  for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-  }
+  // The whole tree: `shell: true` puts a shell and npm between us and the
+  // process that holds the port, and killing the shell leaves the rest alive.
+  for (const child of children) killTree(child);
   process.exitCode = code ?? 0;
 }
 
 function start(name, args) {
-  const child = spawn(npmCommandLine(args), spawnOptions({ cwd: root, env, stdio: 'inherit' }));
+  const child = spawn(
+    npmCommandLine(args),
+    supervisedOptions({ cwd: root, env, stdio: 'inherit' }),
+  );
   child.on('error', (error) => {
     console.error(`\n${name} could not start: ${error.message}`);
     stopAll(1);

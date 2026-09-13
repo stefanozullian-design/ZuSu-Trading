@@ -33,7 +33,17 @@ export default tseslint.config(
     // Plain Node scripts: no TypeScript lib to declare the runtime's globals.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+        // The launcher polls the two servers it started and gives up on a
+        // timer; all three are Node globals, declared here because a .mjs
+        // file has no TypeScript lib to declare them.
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+        setTimeout: 'readonly',
+      },
     },
   },
 );

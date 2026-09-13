@@ -13,6 +13,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "build": "npm run build -w @zusu/shared && npm run build -w @zusu/api && npm run build -w @zusu/web",
+    "start": "node scripts/start.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:api": "node scripts/with-env.mjs npm run dev -w @zusu/api",
     "dev:web": "node scripts/with-env.mjs npm run dev -w @zusu/web",

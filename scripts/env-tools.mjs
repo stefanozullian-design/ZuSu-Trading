@@ -2,6 +2,7 @@
  * The two things every script in here needs, and neither of which the platform
  * gives us for free: `.env` loading, and an npm that works on Windows.
  */
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -35,6 +36,50 @@ export function npmCommandLine(args) {
 
 export function spawnOptions(base = {}) {
   return { ...base, shell: true };
+}
+
+/**
+ * Options for a long-running child that must die with its parent.
+ *
+ * `shell: true` means the thing we spawn is a shell, which then runs npm,
+ * which then runs tsx or vite. `child.kill()` reaches only the shell: the
+ * grandchildren survive, keep their ports bound, and leave a stack that is
+ * still serving pages after the window that started it has closed. The next
+ * launch then reports "already running" and points at an orphan.
+ *
+ * On POSIX the fix is a process *group*: `detached` gives the child its own,
+ * and a negative pid signals all of it. On Windows `detached` would open a
+ * second console window, so the group is left alone and `taskkill /T` walks
+ * the tree instead.
+ */
+export function supervisedOptions(base = {}) {
+  return { ...spawnOptions(base), detached: process.platform !== 'win32' };
+}
+
+/** Stops a child started with {@link supervisedOptions}, and its descendants. */
+export function killTree(child, signal = 'SIGTERM') {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === 'win32') {
+    // taskkill is an .exe, so it needs no shell — and must not get one, since
+    // this runs while the parent is already shutting down.
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+      child.kill(signal);
+    }
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    // No group (the child died between the check and here, or detached was
+    // refused): fall back to the single process rather than give up.
+    try {
+      child.kill(signal);
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 /** A deliberately small parser: KEY=VALUE, `export` prefix, quotes, comments. */
