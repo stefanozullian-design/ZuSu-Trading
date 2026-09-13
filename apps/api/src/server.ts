@@ -1,5 +1,6 @@
 import { buildApp } from './app.js';
 import { config } from './config/env.js';
+import { assertDatabaseIsCurrent } from './lib/migration-check.js';
 import { disconnectPrisma } from './lib/prisma.js';
 import { disconnectRedis } from './lib/redis.js';
 import { Scheduler } from './modules/scheduler/scheduler.js';
@@ -7,6 +8,11 @@ import { Scheduler } from './modules/scheduler/scheduler.js';
 async function main(): Promise<void> {
   const cfg = config();
   const { app, container } = await buildApp();
+
+  // Before anything is served. A database behind the code produces a server
+  // that starts perfectly and then fails on one feature, several steps from
+  // the cause.
+  await assertDatabaseIsCurrent(container.db);
 
   // The scheduler lives with the server rather than the container, because a
   // test that builds the app must not start timers. Nothing it runs can
