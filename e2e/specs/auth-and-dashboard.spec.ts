@@ -354,6 +354,39 @@ test.describe('the dashboard', () => {
     await expect(page.getByText(/belong to different people/i)).toBeVisible();
   });
 
+  test('makes a paper portfolio, and the banner stops claiming synthetic prices', async ({
+    page,
+  }) => {
+    // Practice prices are invented; paper prices are the market's. A banner
+    // fixed to the deployment would say "synthetic market data" over a book
+    // priced from the real market — false, on the one element that exists so
+    // the environment can never be mistaken.
+    await expect(page.getByRole('status')).toContainText(/synthetic/i);
+
+    await page.getByRole('button', { name: /new portfolio/i }).click();
+    await page.getByLabel('Portfolio name').fill('E2E Paper Book');
+    await page.getByLabel('Starting cash').fill('50000');
+    await page.getByLabel('Prices').selectOption('PAPER');
+    await expect(page.getByText(/cannot be changed afterwards/i)).toBeVisible();
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/portfolios') && r.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /create it/i }).click(),
+    ]);
+
+    await page.getByRole('button', { name: /E2E Paper Book/ }).click();
+
+    const banner = page.getByRole('status');
+    await expect(banner).toHaveAccessibleName('Trading environment: PAPER');
+    await expect(banner).toContainText(/real market data/i);
+    await expect(banner).not.toContainText(/synthetic/i);
+
+    // And back again: the claim follows the book rather than sticking.
+    await page.getByRole('button', { name: /Demo Portfolio/ }).click();
+    await expect(page.getByRole('status')).toContainText(/synthetic/i);
+  });
+
   test('keeps the chosen portfolio when you change page', async ({ page }) => {
     // Each page used to keep its own selection, so picking a book here and
     // clicking through to Trading landed you on whichever one came first.

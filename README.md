@@ -233,6 +233,36 @@ Combining is a way of looking and never a way of acting. The kill switch, the
 approval queue and the risk monitor all name exactly one portfolio, and none
 of them appears in the combined view.
 
+### Practice and paper
+
+A portfolio is bound to one environment for life — the rule that stops practice
+credentials ever reaching real money — so the choice is made when it is created
+and the form says as much before the choice, not after.
+
+|           | Prices                             | Execution                         | Money |
+| --------- | ---------------------------------- | --------------------------------- | ----- |
+| **DEMO**  | invented by a seeded simulator     | simulated                         | none  |
+| **PAPER** | the same real bars the charts read | simulated, with modelled slippage | none  |
+| **LIVE**  | real                               | a real broker                     | real  |
+
+PAPER is the one that means something: `StoredBarPrices` feeds the paper venue
+from the same rows the charts, scanner and backtests use, so only the execution
+is imagined and a paper result can be compared with a live one. A demo result
+cannot, because the market it traded never existed.
+
+Because environments are per portfolio, one installation holds both at once —
+which makes a deployment-wide banner a liability. The banner names the
+environment of the portfolio being looked at, falling back to the deployment
+only when none is selected. Otherwise it would say "synthetic market data" over
+a book priced from the real market, on the one element that exists so the
+environment can never be mistaken.
+
+LIVE is not reachable. `BrokerRegistry.isSupported` covers DEMO and PAPER only,
+creating a live portfolio is refused while `ALLOW_LIVE_TRADING` is false, and
+the Robinhood adapter — though written and tested against a fake transport —
+has no real transport at all: the only implementation of that interface rejects
+every call.
+
 ### The Trading page
 
 `/trading` is where the platform's premise is visible. A live strategy produces

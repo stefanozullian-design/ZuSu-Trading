@@ -415,6 +415,7 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
   const [capital, setCapital] = useState('');
   const [ownerId, setOwnerId] = useState<string | null>(defaultOwnerId);
   const [objective, setObjective] = useState<PortfolioObjective | null>(null);
+  const [environment, setEnvironment] = useState<'DEMO' | 'PAPER'>('DEMO');
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
@@ -423,7 +424,7 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
         method: 'POST',
         body: {
           name,
-          environment: 'DEMO',
+          environment,
           initialCapital: capital,
           baseCurrency: 'USD',
           // Omitted rather than sent as null: the API treats an absent owner
@@ -501,10 +502,41 @@ function NewPortfolio({ defaultOwnerId = null }: { defaultOwnerId?: string | nul
           </label>
         </div>
 
+        <label className="block space-y-1">
+          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+            Prices
+          </span>
+          <select
+            id="new-portfolio-environment"
+            aria-label="Prices"
+            className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value === 'PAPER' ? 'PAPER' : 'DEMO')}
+          >
+            <option value="DEMO">Practice — invented prices</option>
+            <option value="PAPER">Paper — real market prices</option>
+          </select>
+        </label>
+
         <p className="text-[11px] text-muted-foreground">
-          It will be a <strong>DEMO</strong> portfolio: simulated prices, a simulated venue, nothing
-          that can reach a real market. A portfolio is bound to its environment for life, so this
-          cannot be switched later — which is what stops demo credentials ever reaching real money.
+          {environment === 'PAPER' ? (
+            <>
+              A <strong>PAPER</strong> portfolio runs on the same real prices as the Market page,
+              with fills simulated against them. No money moves and no order reaches a broker — but
+              the results mean something, because the prices are the market&rsquo;s.
+            </>
+          ) : (
+            <>
+              A <strong>DEMO</strong> portfolio runs on prices invented by a simulator. Useful for
+              finding your way around; its results say nothing about whether a strategy works,
+              because the market it traded never existed.
+            </>
+          )}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          This cannot be changed afterwards. A portfolio is bound to its environment for life — the
+          rule that stops practice credentials ever reaching real money. To switch, make another
+          portfolio and record your holdings in it.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <OwnerPicker id="new-portfolio-owner" value={ownerId} onChange={setOwnerId} />

@@ -17,7 +17,10 @@ import {
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { BuildBadge } from '@/components/BuildBadge';
+import { ENVIRONMENTS } from '@zusu/shared';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
+import { usePortfolios } from '@/hooks/usePortfolios';
+import { useSelectedPortfolio } from '@/hooks/useSelectedPortfolio';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useLiveEvents } from '@/hooks/useLiveEvents';
@@ -54,15 +57,34 @@ export function App() {
 function Shell() {
   const { user, logout, can } = useAuth();
   const { status } = useLiveEvents(true);
+  const { portfolios } = usePortfolios();
+  const { selectedId } = useSelectedPortfolio(portfolios);
+  const selected = portfolios?.find((p) => p.id === selectedId);
+
   const { data: environment } = useQuery({
     queryKey: ['environment'],
     queryFn: () => api<EnvironmentInfo>('/api/system/environment'),
     staleTime: 5 * 60_000,
   });
 
+  /**
+   * The banner describes the book you are in, not the deployment.
+   *
+   * Portfolios each carry their own environment, so one installation can hold
+   * a practice book and a paper one at once. A banner fixed to the deployment
+   * default then says "synthetic market data" over a portfolio priced from the
+   * real market — false, on the one element that exists precisely so the
+   * environment can never be mistaken. It falls back to the deployment when no
+   * portfolio is selected, the only time there is nothing more specific to say.
+   */
+  const shownEnvironment: EnvironmentInfo | undefined =
+    environment && selected
+      ? { ...environment, ...ENVIRONMENTS[selected.environment], environment: selected.environment }
+      : environment;
+
   return (
     <div className="min-h-dvh bg-background">
-      {environment && <EnvironmentBanner environment={environment} />}
+      {shownEnvironment && <EnvironmentBanner environment={shownEnvironment} />}
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-3 py-2 sm:px-6">

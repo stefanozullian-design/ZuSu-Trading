@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { ENVIRONMENTS } from '@zusu/shared';
 import { EnvironmentBanner } from './EnvironmentBanner';
 import type { EnvironmentInfo } from '@/lib/types';
 
@@ -66,5 +67,42 @@ describe('EnvironmentBanner', () => {
       />,
     );
     expect(screen.queryByText(/live trading is disabled/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Why the banner follows the portfolio rather than the deployment.
+ *
+ * Each portfolio carries its own environment, so one installation can hold a
+ * practice book and a paper one at the same time. A banner fixed to the
+ * deployment default would then say "synthetic market data" over a portfolio
+ * priced from the real market — false, on the one element that exists so the
+ * environment can never be mistaken.
+ */
+describe('what the banner claims about prices', () => {
+  it('describes paper as real market data', () => {
+    render(
+      <EnvironmentBanner
+        environment={environment({
+          environment: 'PAPER',
+          label: 'PAPER',
+          tone: 'amber',
+          description: ENVIRONMENTS.PAPER.description,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveAccessibleName('Trading environment: PAPER');
+    expect(screen.getByText(/real market data/i)).toBeInTheDocument();
+    expect(screen.queryByText(/synthetic/i)).toBeNull();
+  });
+
+  it('keeps the shipped wording rather than a copy that can drift', () => {
+    // The descriptions live in the shared package because the API states them
+    // too; a second copy here would eventually disagree with the one people
+    // actually see.
+    expect(ENVIRONMENTS.DEMO.description).toMatch(/synthetic/i);
+    expect(ENVIRONMENTS.PAPER.description).toMatch(/real market data/i);
+    expect(ENVIRONMENTS.LIVE.description).toMatch(/real money/i);
   });
 });
