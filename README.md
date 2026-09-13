@@ -35,6 +35,11 @@ npm run dev      # API on :4000, web client on :5173
 ```
 
 `npm run setup` refuses to touch an existing `.env`, so it is safe to re-run.
+
+The `allowScripts` block in `package.json` pre-approves the four packages whose
+install scripts npm 11 blocks by default — Prisma's engines and esbuild's
+binary. Without it `npm install` reports success while leaving those unbuilt,
+and the first failure arrives several commands later with an unrelated message.
 Point `DATABASE_URL` at your PostgreSQL first if it is not the default
 `postgresql://zusu:zusu@127.0.0.1:5432/zusu_trading`.
 
