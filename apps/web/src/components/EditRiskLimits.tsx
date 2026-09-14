@@ -8,10 +8,16 @@ import type { RiskLimits } from '@/lib/types';
 /**
  * Changing the numbers that will one day stop a loss.
  *
- * Administrator-only, and deliberately: a trading account that can raise its
- * own limits has limits in name only. The separation costs a second sign-in on
- * a one-person installation, and that friction is the point — it sits between
- * "this refusal is annoying" and "I raised the limit".
+ * Open to anyone who may trade. It was administrator-only, and the argument —
+ * an account that can raise its own limits has limits in name only —
+ * describes a firm, where the person who trades and the person who sets the
+ * ceiling are different people. In a one-person installation they are the same
+ * person, and the separation bought a second login rather than a second
+ * opinion.
+ *
+ * So the safeguard has to be in the change rather than in who makes it, which
+ * is what the rest of this does: a new version every time, the old numbers
+ * still readable, and a reason that is not optional.
  *
  * A reason is required for the same purpose a rejection needs one: the numbers
  * are easy to read afterwards and impossible to interpret without knowing why

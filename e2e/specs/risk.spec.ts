@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn, signInAdmin } from './helpers';
+import { signIn } from './helpers';
 
 /**
  * The risk engine, end to end.
@@ -22,20 +22,8 @@ async function size(page: import('@playwright/test').Page, stop: string): Promis
 }
 
 test.describe('changing the limits', () => {
-  test('a manager is told who may change them, and gets no control', async ({ page }) => {
+  test('a manager changes them, and the old version is superseded', async ({ page }) => {
     await signIn(page, 'manager');
-    await page.getByRole('link', { name: 'Risk', exact: true }).click();
-    await expect(page.getByText(/limits, version/i)).toBeVisible();
-
-    // Said rather than left as an absent button: somebody looking for this
-    // needs to know it exists and who may use it, not conclude the platform
-    // cannot do it.
-    await expect(page.getByRole('button', { name: /^Change$/ })).toHaveCount(0);
-    await expect(page.getByText(/needs an administrator/i)).toBeVisible();
-  });
-
-  test('an administrator changes them, and the old version is superseded', async ({ page }) => {
-    await signInAdmin(page);
     await page.getByRole('link', { name: 'Risk', exact: true }).click();
     await expect(page.getByText(/limits, version 1/i)).toBeVisible();
 
@@ -54,6 +42,14 @@ test.describe('changing the limits', () => {
 
     await expect(page.getByText(/limits, version 2/i)).toBeVisible();
     await expect(page.getByText(/4,321/)).toBeVisible();
+  });
+
+  test('a viewer may read the limits and not touch them', async ({ page }) => {
+    await signIn(page, 'viewer');
+    await page.goto('/risk');
+
+    // Widening this for a manager must not widen it for everyone.
+    await expect(page.getByRole('button', { name: /^Change$/ })).toHaveCount(0);
   });
 });
 

@@ -14,13 +14,22 @@ describe('role permissions', () => {
     }
   });
 
-  it('lets a manager trade but not widen risk limits (§40)', () => {
+  it('lets a manager trade, and set the limits they trade under', () => {
+    // §40 withheld risk:write from a manager, and the owner of this
+    // installation moved it. The argument describes a firm, where the person
+    // who trades and the person who sets the ceiling are different people; in
+    // a one-person install the separation bought a second login rather than a
+    // second opinion. What it protected is kept in the change itself — see
+    // the risk-limits suite: versioned, reasoned, audited.
     expect(roleHasPermission(UserRole.MANAGER, Permission.ORDER_WRITE)).toBe(true);
     expect(roleHasPermission(UserRole.MANAGER, Permission.SIGNAL_APPROVE)).toBe(true);
-    expect(roleHasPermission(UserRole.MANAGER, Permission.RISK_WRITE)).toBe(false);
+    expect(roleHasPermission(UserRole.MANAGER, Permission.RISK_WRITE)).toBe(true);
   });
 
   it('lets a manager stop trading but not restart it', () => {
+    // The asymmetry survives the change above, and is the opposite shape:
+    // stopping is safe in every circumstance, restarting is the decision
+    // worth a second pair of eyes.
     expect(roleHasPermission(UserRole.MANAGER, Permission.KILL_SWITCH_ACTIVATE)).toBe(true);
     expect(roleHasPermission(UserRole.MANAGER, Permission.KILL_SWITCH_RELEASE)).toBe(false);
   });
@@ -90,7 +99,6 @@ describe('managing owners', () => {
 
   it('leaves the permissions that matter most exactly where they were', () => {
     for (const permission of [
-      Permission.RISK_WRITE,
       Permission.STRATEGY_PROMOTE,
       Permission.KILL_SWITCH_RELEASE,
       Permission.AUDIT_READ,

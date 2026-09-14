@@ -330,11 +330,19 @@ trade" always has an answer.
 
 ### Changing risk limits
 
-`PUT /api/risk/portfolios/:id/limits` is administrator-only, and the Risk page
-offers the control only to an administrator — a trading account that can raise
-its own limits has limits in name only. Everybody else is told who may change
-them, rather than left to conclude from an absent button that the platform
-cannot.
+`PUT /api/risk/portfolios/:id/limits` needs `risk:write`, which a manager
+holds. It was administrator-only (spec §40) and was moved at the owner's
+direction: the argument for the separation — an account that can raise its own
+limits has limits in name only — describes a firm, where the person who trades
+and the person who sets the ceiling are different people. In a one-person
+install they are the same person, and it bought a second login with an
+authenticator app rather than a second opinion.
+
+The safeguard therefore lives in the change rather than in who makes it.
+Clients and viewers still cannot touch limits, and releasing a halt remains
+administrator-only — stopping is safe in every circumstance and restarting is
+the decision worth a second pair of eyes, which is the opposite shape from a
+limit somebody has to be able to correct after importing their holdings.
 
 Every change writes a new version and marks the old one inactive. Nothing is
 overwritten: the limits in force when something was refused have to stay

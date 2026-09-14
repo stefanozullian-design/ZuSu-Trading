@@ -13,10 +13,16 @@ import { createPortfolio, createUser, grantPortfolioAccess } from '../helpers/fi
  * importing adds value without adding cash and leaves a $1,000 limit guarding
  * an $18,000 book.
  *
- * Two properties matter. The change is administrator-only: a trading account
- * that can raise its own limits has limits in name only. And the previous
- * version survives it, because the limits in force when something was refused
- * have to stay readable, or the refusal cannot be explained afterwards.
+ * A manager may change them. That was administrator-only, and the argument for
+ * it — an account that can raise its own limits has limits in name only —
+ * describes a firm, where the person who trades and the person who sets the
+ * ceiling are different people. Here they are the same person, and the
+ * separation bought a second login rather than a second opinion.
+ *
+ * So what it was protecting has to live in the change itself, and that is what
+ * these tests are about: a new version every time, the previous numbers still
+ * readable, a reason that is not optional, and both sides in the audit log. A
+ * limit can be raised, and never quietly.
  */
 
 let harness: TestApp;
@@ -130,10 +136,25 @@ describe('changing risk limits', () => {
     expect(await db.riskLimit.count({ where: { portfolioId } })).toBe(1);
   });
 
-  it('does not let a manager change them', async () => {
+  it('lets a manager change them, and records it the same way', async () => {
     const response = await put(manager, change);
 
-    // A trading account that can raise its own limits has limits in name only.
+    expect(response.statusCode).toBe(200);
+
+    const active = await db.riskLimit.findFirstOrThrow({ where: { portfolioId, isActive: true } });
+    // Whoever changes it, the change is versioned, reasoned and attributed.
+    expect(active.version).toBe(2);
+    expect(active.changeReason).toMatch(/opening cash/i);
+    expect(active.changedById).not.toBeNull();
+  });
+
+  it('still refuses a viewer', async () => {
+    await createUser(db, { email: 'risk-viewer@test.local', role: UserRole.VIEWER });
+    const viewer = await login(harness.app, 'risk-viewer@test.local');
+
+    // Widening the permission for one role must not widen it for every role.
+    const response = await put(viewer, change);
+
     expect(response.statusCode).toBe(403);
     expect(await db.riskLimit.count({ where: { portfolioId } })).toBe(1);
   });

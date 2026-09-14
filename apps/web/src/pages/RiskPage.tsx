@@ -197,8 +197,8 @@ export function RiskPage() {
                     // looking for this needs to know it exists and who may use
                     // it, not conclude the platform cannot do it.
                     <p className="border-t border-border pt-2 text-[11px] text-muted-foreground">
-                      Changing these needs an administrator. A trading account that can raise its
-                      own limits has limits in name only.
+                      This account can read these limits but not change them. Changing them needs an
+                      account that may trade.
                     </p>
                   )
                 )}

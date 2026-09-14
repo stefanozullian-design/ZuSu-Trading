@@ -35,7 +35,22 @@ export const Permission = {
   WATCHLIST_WRITE: 'watchlist:write',
   /** Reading configured risk limits. */
   RISK_READ: 'risk:read',
-  /** Changing risk limits — deliberately withheld from MANAGER (spec §40). */
+  /**
+   * Changing risk limits.
+   *
+   * Withheld from MANAGER until the owner of this installation decided
+   * otherwise (spec §40 said administrator-only). The argument for the
+   * separation is real — an account that can raise its own limits has limits
+   * in name only — and it describes a firm, where the person who trades and
+   * the person who sets the ceiling are different people. In a one-person
+   * install they are the same person, and the separation bought a second
+   * login with an authenticator app rather than a second opinion.
+   *
+   * What the boundary was protecting is kept where it can be: every change
+   * writes a new version rather than editing the one in force, the previous
+   * numbers stay readable, a reason is required, and both sides go into the
+   * audit log. A limit can be raised, and never quietly.
+   */
   RISK_WRITE: 'risk:write',
   KILL_SWITCH_ACTIVATE: 'kill_switch:activate',
   KILL_SWITCH_RELEASE: 'kill_switch:release',
@@ -94,8 +109,16 @@ const MANAGER_PERMISSIONS: Permission[] = [
   Permission.ORDER_WRITE,
   Permission.BACKTEST_READ,
   Permission.BACKTEST_WRITE,
-  // A manager can always stop trading, but cannot release the halt or widen
-  // risk limits — that requires an admin.
+  /**
+   * Changing risk limits. See the note on RISK_WRITE for why this moved.
+   *
+   * A manager can still only *stop* trading: releasing a halt remains
+   * administrator-only, and that asymmetry is deliberate. Stopping is safe in
+   * every circumstance and restarting is the decision worth a second pair of
+   * eyes, which is the opposite shape from a limit somebody has to be able to
+   * correct after importing their holdings.
+   */
+  Permission.RISK_WRITE,
   Permission.KILL_SWITCH_ACTIVATE,
   Permission.SYSTEM_READ,
 ];
