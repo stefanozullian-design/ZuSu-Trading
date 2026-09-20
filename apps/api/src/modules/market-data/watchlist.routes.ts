@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Permission } from '@zusu/shared';
+import { Permission, comparisonSchema, compareScansSchema } from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
 import { principalOf } from '../../plugins/auth.js';
 import { scanConditionsSchema } from './scan.service.js';
@@ -301,6 +301,40 @@ export async function registerWatchlistRoutes(
       const result = await container.scans.run(request.body);
       return reply.send(serialiseRun(result));
     },
+  );
+
+  typed.post(
+    '/scans/compare',
+    {
+      ...read,
+      schema: {
+        tags: ['scans'],
+        summary: 'Run several saved scans and lay their results side by side',
+        description:
+          'Symbols are the rows and methods are the columns, sorted by how many methods ' +
+          'flagged each symbol. Reading one list at a time can never produce that number, ' +
+          'which is the one fact worth having: a symbol three independent filters flag is a ' +
+          'different proposition from one that scraped through a single screen. ' +
+          'A saved scan that cannot run is reported in its own column with the reason and ' +
+          'does not hide the results from the others. Naming a portfolio adds, for each ' +
+          'candidate, whether it is already held and whether its sector has room — measured ' +
+          'against the limits that portfolio’s objective implies. ' +
+          'Agreement is a count of the filters you chose, not a score and not advice; the ' +
+          'caveats are returned with every response rather than left to be inferred.',
+        body: compareScansSchema,
+        response: { 200: comparisonSchema },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await container.scanCompare.compare(principalOf(request), {
+          scanIds: request.body.scanIds,
+          ...(request.body.portfolioId === undefined
+            ? {}
+            : { portfolioId: request.body.portfolioId }),
+          ...(request.body.barLimit === undefined ? {} : { barLimit: request.body.barLimit }),
+        }),
+      ),
   );
 
   typed.post(

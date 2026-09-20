@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleHelp, Play, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { ConditionBuilder } from '@/components/market/ConditionBuilder';
+import { ScanComparison } from '@/components/market/ScanComparison';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { usePortfolios } from '@/hooks/usePortfolios';
 import { api, explainApiError as explain } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -25,6 +27,7 @@ const TIMEFRAMES = ['5m', '1d'] as const;
  */
 export function ScannerPage() {
   const { can } = useAuth();
+  const { portfolios } = usePortfolios();
   const queryClient = useQueryClient();
   const canWrite = can('watchlist:write');
 
@@ -176,6 +179,9 @@ export function ScannerPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     className="h-8 max-w-52 text-xs"
+                    // A placeholder is not a label: it disappears the moment
+                    // anyone types, and a screen reader gets nothing.
+                    aria-label="Save this filter as"
                     placeholder="Save this filter as…"
                     value={saveName}
                     onChange={(e) => setSaveName(e.target.value)}
@@ -368,6 +374,13 @@ export function ScannerPage() {
           </Card>
         </div>
       </div>
+
+      {/*
+        Below the single-filter workspace, because it only becomes possible
+        once there are saved filters to compare — and because the comparison
+        is the reason for saving them.
+      */}
+      <ScanComparison scans={scans?.scans ?? []} portfolios={portfolios} />
     </main>
   );
 }

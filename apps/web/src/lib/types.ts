@@ -850,3 +850,36 @@ export interface CompositionDto {
     pctOfEquity: string | null;
   }[];
 }
+
+export interface MethodColumn {
+  scanId: string;
+  name: string;
+  timeframe: string;
+  summary: string[];
+  matched: number;
+  evaluated: number;
+  notEvaluable: { symbol: string; reason: string }[];
+  /** Set when the scan could not run. Its column is empty, not absent. */
+  error: string | null;
+}
+
+export interface ComparisonRow {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  flaggedBy: string[];
+  agreement: number;
+  values: Record<string, string>;
+  held: boolean;
+  heldPct: string | null;
+  sectorPct: string | null;
+  fit: Finding[];
+}
+
+export interface ComparisonDto {
+  ranAt: string;
+  methods: MethodColumn[];
+  rows: ComparisonRow[];
+  portfolioId: string | null;
+  caveats: string[];
+}

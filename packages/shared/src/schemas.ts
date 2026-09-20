@@ -387,6 +387,52 @@ export const compositionSchema = z.object({
 export type CompositionDto = z.infer<typeof compositionSchema>;
 
 // ---------------------------------------------------------------------------
+// Comparing scans
+// ---------------------------------------------------------------------------
+
+export const compareScansSchema = z.object({
+  /** The saved scans to run. Two is the smallest comparison worth the name. */
+  scanIds: z.array(z.string().uuid()).min(1).max(8),
+  /** Measures each candidate against what this portfolio already holds. */
+  portfolioId: z.string().uuid().nullable().optional(),
+  barLimit: z.number().int().min(50).max(1000).optional(),
+});
+
+export const comparisonSchema = z.object({
+  ranAt: z.string().datetime(),
+  methods: z.array(
+    z.object({
+      scanId: z.string(),
+      name: z.string(),
+      timeframe: z.string(),
+      summary: z.array(z.string()),
+      matched: z.number(),
+      evaluated: z.number(),
+      notEvaluable: z.array(z.object({ symbol: z.string(), reason: z.string() })),
+      /** Set when the scan could not run. Its column is empty, not absent. */
+      error: z.string().nullable(),
+    }),
+  ),
+  rows: z.array(
+    z.object({
+      symbol: z.string(),
+      name: z.string().nullable(),
+      sector: z.string().nullable(),
+      flaggedBy: z.array(z.string()),
+      agreement: z.number(),
+      values: z.record(z.string(), z.string()),
+      held: z.boolean(),
+      heldPct: decimalString.nullable(),
+      sectorPct: decimalString.nullable(),
+      fit: z.array(findingSchema),
+    }),
+  ),
+  portfolioId: z.string().nullable(),
+  caveats: z.array(z.string()),
+});
+export type ComparisonDto = z.infer<typeof comparisonSchema>;
+
+// ---------------------------------------------------------------------------
 // Kill switch
 // ---------------------------------------------------------------------------
 
