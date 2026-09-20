@@ -2,15 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   CandlestickChart,
-  Gauge,
   LogOut,
   Radar,
   ScrollText,
+  Wallet,
   LineChart,
   ShieldAlert,
-  ShieldCheck,
-  TestTubeDiagonal,
-  Waypoints,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -26,15 +23,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLiveEvents } from '@/hooks/useLiveEvents';
 import { AuditPage } from '@/pages/AuditPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { HoldingsPage } from '@/pages/HoldingsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MarketPage } from '@/pages/MarketPage';
 import { ScannerPage } from '@/pages/ScannerPage';
-import { StrategiesPage } from '@/pages/StrategiesPage';
-import { BacktestPage } from '@/pages/BacktestPage';
 import { PerformancePage } from '@/pages/PerformancePage';
-import { AutomationPage } from '@/pages/AutomationPage';
 import { RiskPage } from '@/pages/RiskPage';
-import { TradingPage } from '@/pages/TradingPage';
 import { cn } from '@/lib/utils';
 import type { EnvironmentInfo } from '@/lib/types';
 
@@ -92,6 +86,13 @@ function Shell() {
 
           <nav className="flex items-center gap-1">
             <NavItem to="/" icon={<Activity className="h-4 w-4" aria-hidden />} label="Dashboard" />
+            {can('position:read') && (
+              <NavItem
+                to="/holdings"
+                icon={<Wallet className="h-4 w-4" aria-hidden />}
+                label="Holdings"
+              />
+            )}
             {can('market_data:read') && (
               <NavItem
                 to="/market"
@@ -106,20 +107,6 @@ function Shell() {
                 label="Scanner"
               />
             )}
-            {can('strategy:read') && (
-              <NavItem
-                to="/strategies"
-                icon={<Waypoints className="h-4 w-4" aria-hidden />}
-                label="Strategies"
-              />
-            )}
-            {can('order:read') && (
-              <NavItem
-                to="/trading"
-                icon={<ShieldCheck className="h-4 w-4" aria-hidden />}
-                label="Trading"
-              />
-            )}
             {can('performance:read') && (
               <NavItem
                 to="/performance"
@@ -132,20 +119,6 @@ function Shell() {
                 to="/risk"
                 icon={<ShieldAlert className="h-4 w-4" aria-hidden />}
                 label="Risk"
-              />
-            )}
-            {can('strategy:read') && (
-              <NavItem
-                to="/automation"
-                icon={<Gauge className="h-4 w-4" aria-hidden />}
-                label="Automation"
-              />
-            )}
-            {can('backtest:read') && (
-              <NavItem
-                to="/backtests"
-                icon={<TestTubeDiagonal className="h-4 w-4" aria-hidden />}
-                label="Backtests"
               />
             )}
             {can('audit:read') && (
@@ -183,6 +156,10 @@ function Shell() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route
+          path="/holdings"
+          element={can('position:read') ? <HoldingsPage /> : <Navigate to="/" />}
+        />
+        <Route
           path="/market"
           element={can('market_data:read') ? <MarketPage /> : <Navigate to="/" />}
         />
@@ -191,26 +168,10 @@ function Shell() {
           element={can('market_data:read') ? <ScannerPage /> : <Navigate to="/" />}
         />
         <Route
-          path="/strategies"
-          element={can('strategy:read') ? <StrategiesPage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/trading"
-          element={can('order:read') ? <TradingPage /> : <Navigate to="/" />}
-        />
-        <Route
           path="/performance"
           element={can('performance:read') ? <PerformancePage /> : <Navigate to="/" />}
         />
         <Route path="/risk" element={can('risk:read') ? <RiskPage /> : <Navigate to="/" />} />
-        <Route
-          path="/automation"
-          element={can('strategy:read') ? <AutomationPage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/backtests"
-          element={can('backtest:read') ? <BacktestPage /> : <Navigate to="/" />}
-        />
         <Route path="/audit" element={can('audit:read') ? <AuditPage /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
