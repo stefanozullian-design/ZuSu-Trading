@@ -23,6 +23,7 @@ import {
 import { useEnvironmentFilter } from '@/hooks/useEnvironmentFilter';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
+import { PortfolioComposition } from '@/components/PortfolioComposition';
 import { PositionsTable } from '@/components/PositionsTable';
 import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
@@ -266,6 +267,12 @@ export function DashboardPage() {
           */}
           <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
             <div className="space-y-4 lg:col-span-2">
+              {/*
+                Findings first: the dashboard's job is to answer "is anything
+                wrong", and a page that opens with a table of holdings makes
+                the reader work that out for themselves every time.
+              */}
+              <PortfolioComposition portfolioId={single.id} objective={single.objective} />
               <PositionsTable portfolioId={single.id} />
             </div>
 

@@ -797,3 +797,56 @@ export interface TradeHistoryEntry {
   note: string | null;
   recordedByHand: boolean;
 }
+
+export type FindingSeverity = 'INFO' | 'WATCH' | 'BREACH';
+
+export interface Finding {
+  /** Stable across runs, so a repeat can be told from something new. */
+  code: string;
+  severity: FindingSeverity;
+  title: string;
+  detail: string;
+  subject?: string;
+}
+
+export interface WeightDto {
+  key: string;
+  value: string;
+  /** Null whenever any holding is unpriced. */
+  pct: string | null;
+}
+
+export interface CompositionDto {
+  portfolioId: string;
+  objective: string | null;
+  asOf: string;
+  equity: string | null;
+  cash: string;
+  invested: string | null;
+  cashPct: string | null;
+  investedPct: string | null;
+  bySymbol: WeightDto[];
+  bySector: WeightDto[];
+  /** Symbols nothing could price. Every percentage is withheld while non-empty. */
+  unpriced: string[];
+  concentration: {
+    largest: WeightDto | null;
+    topThreePct: string | null;
+    herfindahl: string | null;
+    effectiveNames: string | null;
+  };
+  findings: Finding[];
+  holdings: {
+    symbol: string;
+    name: string | null;
+    sector: string | null;
+    quantity: string;
+    averageEntryPrice: string;
+    markPrice: string | null;
+    marketValue: string | null;
+    costBasis: string;
+    unrealizedPnl: string | null;
+    unrealizedPnlPct: string | null;
+    pctOfEquity: string | null;
+  }[];
+}

@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   Permission,
+  compositionSchema,
   createPortfolioSchema,
   portfolioSummarySchema,
   positionSchema,
@@ -233,6 +234,29 @@ export async function registerPortfolioRoutes(
       });
       return reply.status(201).send(imported);
     },
+  );
+
+  typed.get(
+    '/:id/composition',
+    {
+      preHandler: app.requirePermission(Permission.POSITION_READ),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'What the portfolio is made of, and what is worth knowing about it',
+        description:
+          'Holdings with their weights, the sector breakdown, concentration, and findings ' +
+          'measured against the limits this portfolio’s objective implies. One call rather ' +
+          'than several, because every percentage divides by the same equity: assembling them ' +
+          'from separate requests would let a sector weight and a holding weight be computed ' +
+          'against different valuations. If any holding cannot be priced, every percentage is ' +
+          'null and `unpriced` names the symbols — a weight computed against an incomplete ' +
+          'valuation overstates every other holding.',
+        params: idParams,
+        response: { 200: compositionSchema },
+      },
+    },
+    async (request, reply) =>
+      reply.send(await container.composition.forPortfolio(principalOf(request), request.params.id)),
   );
 
   typed.post(

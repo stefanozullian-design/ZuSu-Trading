@@ -22,6 +22,7 @@ import { ReconciliationService } from './modules/broker/reconciliation.service.j
 import { AutomationService } from './modules/automation/automation.service.js';
 import { PositionImportService } from './modules/portfolios/position-import.service.js';
 import { TradeRecordService } from './modules/portfolios/trade-record.service.js';
+import { CompositionService } from './modules/portfolios/composition.service.js';
 import { MarketDataSyncService } from './modules/market-data/market-data-sync.service.js';
 import { InstrumentService } from './modules/market-data/instrument.service.js';
 import { LiveReadinessService } from './modules/automation/live-readiness.js';
@@ -74,6 +75,7 @@ export interface AppContainer {
   instruments: InstrumentService;
   positionImport: PositionImportService;
   tradeRecords: TradeRecordService;
+  composition: CompositionService;
   readiness: LiveReadinessService;
   automation: AutomationService;
   ws: WebSocketGateway;
@@ -131,6 +133,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
   const instruments = new InstrumentService(db, access, audit, marketData, marketDataSync);
   const positionImport = new PositionImportService(db, access, audit);
   const tradeRecords = new TradeRecordService(db, access, audit);
+  const composition = new CompositionService(db, access, brokers);
   const readiness = new LiveReadinessService(db, brokers);
   const automation = new AutomationService(db, access, audit, readiness, orders);
   const analysis = new AnalysisService(
@@ -172,6 +175,7 @@ export function buildContainer(options: { db?: PrismaClient; logger?: Logger } =
     instruments,
     positionImport,
     tradeRecords,
+    composition,
     readiness,
     automation,
     ws,

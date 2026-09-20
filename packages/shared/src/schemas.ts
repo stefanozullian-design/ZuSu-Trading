@@ -328,6 +328,65 @@ export const tradeHistoryEntrySchema = z.object({
 export type TradeHistoryEntryDto = z.infer<typeof tradeHistoryEntrySchema>;
 
 // ---------------------------------------------------------------------------
+// Composition
+// ---------------------------------------------------------------------------
+
+export const weightSchema = z.object({
+  key: z.string(),
+  value: decimalString,
+  /** Null whenever any holding is unpriced — see `unpriced`. */
+  pct: decimalString.nullable(),
+});
+
+export const findingSchema = z.object({
+  /** Stable across runs, so a watcher can tell a new finding from a repeat. */
+  code: z.string(),
+  severity: z.enum(['INFO', 'WATCH', 'BREACH']),
+  title: z.string(),
+  detail: z.string(),
+  subject: z.string().optional(),
+});
+
+export const compositionSchema = z.object({
+  portfolioId: z.string().uuid(),
+  objective: z.string().nullable(),
+  asOf: z.string().datetime(),
+  equity: decimalString.nullable(),
+  cash: decimalString,
+  invested: decimalString.nullable(),
+  cashPct: decimalString.nullable(),
+  investedPct: decimalString.nullable(),
+  bySymbol: z.array(weightSchema),
+  bySector: z.array(weightSchema),
+  /** Symbols nothing could price. Every percentage is withheld while non-empty. */
+  unpriced: z.array(z.string()),
+  concentration: z.object({
+    largest: weightSchema.nullable(),
+    topThreePct: decimalString.nullable(),
+    herfindahl: decimalString.nullable(),
+    /** The number of equally sized holdings this portfolio behaves like. */
+    effectiveNames: decimalString.nullable(),
+  }),
+  findings: z.array(findingSchema),
+  holdings: z.array(
+    z.object({
+      symbol: z.string(),
+      name: z.string().nullable(),
+      sector: z.string().nullable(),
+      quantity: decimalString,
+      averageEntryPrice: decimalString,
+      markPrice: decimalString.nullable(),
+      marketValue: decimalString.nullable(),
+      costBasis: decimalString,
+      unrealizedPnl: decimalString.nullable(),
+      unrealizedPnlPct: decimalString.nullable(),
+      pctOfEquity: decimalString.nullable(),
+    }),
+  ),
+});
+export type CompositionDto = z.infer<typeof compositionSchema>;
+
+// ---------------------------------------------------------------------------
 // Kill switch
 // ---------------------------------------------------------------------------
 

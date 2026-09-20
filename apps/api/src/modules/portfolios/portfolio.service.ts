@@ -21,6 +21,7 @@ import { AppError } from '../../lib/errors.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { BrokerRegistry } from '../broker/broker-registry.js';
 import type { AccessControl, Principal } from '../rbac/access-control.js';
+import { markPrices } from './marks.js';
 
 export class PortfolioService {
   constructor(
@@ -471,26 +472,9 @@ export class PortfolioService {
     return this.summarise(updated, updated.client);
   }
 
-  /**
-   * Marks a set of symbols. Returns an empty map when the portfolio's
-   * environment has no market-data source — callers then report "no mark"
-   * rather than substituting entry price for a real price.
-   */
+  /** Delegates to the shared helper, so every valuation uses one price source. */
   private async markPrices(portfolio: Portfolio, symbols: string[]): Promise<Map<string, Decimal>> {
-    const marks = new Map<string, Decimal>();
-    if (symbols.length === 0) return marks;
-    if (!this.brokers.isSupported(portfolio.environment as TradingEnvironment)) return marks;
-
-    const broker = this.brokers.forPortfolio(portfolio);
-    for (const symbol of new Set(symbols)) {
-      try {
-        const quote = await broker.getQuote(symbol);
-        marks.set(symbol, quote.price);
-      } catch {
-        // A missing quote leaves the position unmarked; it is never invented.
-      }
-    }
-    return marks;
+    return markPrices(this.brokers, portfolio, symbols);
   }
 
   private async summarise(
