@@ -25,8 +25,12 @@ test.describe('the scanner', () => {
 
   test('renders the filter back in words', async ({ page }) => {
     await page.getByRole('button', { name: /run scan/i }).click();
-    await expect(page.getByText(/rsi14 below 35/)).toBeVisible();
-    await expect(page.getByText(/close above sma50/)).toBeVisible();
+    // Scoped to the result, not the page: saved scans left by earlier specs
+    // render their own summaries in the sidebar, and several of them end in
+    // the same clause as this filter does.
+    const result = page.getByRole('region', { name: 'Scan result' });
+    await expect(result.getByText(/rsi14 below 35/)).toBeVisible();
+    await expect(result.getByText(/close above sma50/)).toBeVisible();
   });
 
   test('separates "nothing matched" from "could not evaluate"', async ({ page }) => {
@@ -83,10 +87,13 @@ test.describe('the scanner', () => {
   });
 
   test('runs a seeded saved scan and records that it ran', async ({ page }) => {
-    await expect(page.getByText('MACD turning up')).toBeVisible();
+    // Scoped to the saved-scans list: the comparison panel below also offers
+    // every scan by name, and that button does something else entirely.
+    const saved = page.getByRole('region', { name: 'Saved scans' });
+    await expect(saved.getByText('MACD turning up')).toBeVisible();
     await expect(page.getByText(/never run/).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'MACD turning up', exact: true }).click();
+    await saved.getByRole('button', { name: 'MACD turning up', exact: true }).click();
 
     // The filter is loaded back into the builder, and the summary matches.
     await expect(page.getByText(/macd crosses above macdSignal/).first()).toBeVisible();
@@ -95,10 +102,10 @@ test.describe('the scanner', () => {
 
   test('saves a filter and lists it', async ({ page }) => {
     const name = `E2E scan ${String(Date.now())}`;
-    await page.getByPlaceholder(/save this filter as/i).fill(name);
+    await page.getByLabel('Save this filter as').fill(name);
     await page.getByRole('button', { name: /^save$/i }).click();
 
-    await expect(page.getByText(name)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Saved scans' }).getByText(name)).toBeVisible();
   });
 
   test('refuses a threshold that is not a number, rather than reporting no data', async ({

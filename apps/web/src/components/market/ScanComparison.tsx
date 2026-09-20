@@ -89,6 +89,12 @@ export function ScanComparison({
               type="button"
               onClick={() => toggle(scan.id)}
               aria-pressed={selected.includes(scan.id)}
+              // The saved-scans list already has a button with this scan's
+              // name that does something else entirely — it loads the filter
+              // into the builder. Two controls with one accessible name is a
+              // genuine ambiguity for anyone navigating by name, so this one
+              // says what it does.
+              aria-label={`Compare ${scan.name}`}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
                 selected.includes(scan.id)

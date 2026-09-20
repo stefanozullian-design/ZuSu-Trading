@@ -208,7 +208,7 @@ export function ScannerPage() {
 
           {result && (
             <>
-              <Card>
+              <Card role="region" aria-label="Scan result">
                 <CardHeader className="flex-row items-baseline justify-between gap-2">
                   <CardTitle>
                     {result.matches.length} match{result.matches.length === 1 ? '' : 'es'}
@@ -306,7 +306,7 @@ export function ScannerPage() {
         </div>
 
         <div className="space-y-3">
-          <Card>
+          <Card role="region" aria-label="Saved scans">
             <CardHeader>
               <CardTitle>Saved scans</CardTitle>
             </CardHeader>
