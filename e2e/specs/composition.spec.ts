@@ -67,3 +67,19 @@ test.describe('what the portfolio is made of', () => {
     }
   });
 });
+
+test.describe('the watcher', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page, 'manager');
+  });
+
+  test('has somewhere to speak, and says so when it has nothing', async ({ page }) => {
+    const panel = page.getByRole('region', { name: 'Since you last looked' });
+    await expect(panel).toBeVisible();
+
+    // An empty panel is indistinguishable from a watcher that stopped running,
+    // so the quiet case is written out rather than left blank.
+    const text = await panel.innerText();
+    expect(text.length).toBeGreaterThan(30);
+  });
+});

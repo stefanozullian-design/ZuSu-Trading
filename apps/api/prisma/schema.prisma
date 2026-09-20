@@ -463,6 +463,7 @@ model Portfolio {
   watchlists       Watchlist[]
   reports          Report[]
   recordedTrades   RecordedTrade[]
+  findings         PortfolioFinding[]
 
   /// Unique per owner, not per installation: two people may each have a
   /// "Retirement". The migration declares NULLS NOT DISTINCT so that unowned
@@ -1241,6 +1242,37 @@ model RecordedTrade {
   @@index([portfolioId, occurredAt(sort: Desc)])
   @@index([portfolioId, symbol])
   @@map("recorded_trades")
+}
+
+/// What the watcher has already reported (§56).
+///
+/// Without memory the watcher would report the same concentration on every
+/// run, and a person told the same thing every hour stops reading any of it —
+/// which costs them the one message that was new. Each finding is a row with a
+/// life instead: first seen, last seen, and when it stopped being true.
+/// Notifications go out on the transitions, never on the quiet runs between.
+model PortfolioFinding {
+  id          String    @id @default(uuid()) @db.Uuid
+  portfolioId String    @map("portfolio_id") @db.Uuid
+  /// Stable across runs. This is what makes a repeat a repeat.
+  code        String
+  /// The symbol or sector it is about; null when it is about the portfolio.
+  subject     String?
+  severity    String
+  title       String
+  detail      String
+  firstSeenAt DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
+  /// Set when it stopped being true. The row is kept either way.
+  resolvedAt  DateTime? @map("resolved_at")
+  notifiedAt  DateTime? @map("notified_at")
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  // The unique index is declared in the migration: it needs NULLS NOT
+  // DISTINCT, which Prisma cannot express.
+  @@index([portfolioId, resolvedAt])
+  @@map("portfolio_findings")
 }
 
 // ---------------------------------------------------------------------------

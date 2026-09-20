@@ -113,6 +113,13 @@ export class Scheduler {
       intervalMs: 6 * HOUR,
       run: () => this.syncMarketData(),
     });
+    this.define({
+      name: 'portfolio-watch',
+      // Hourly. A concentration does not need a minute's notice, and a watcher
+      // that runs oftener than a person acts is only spending database time.
+      intervalMs: HOUR,
+      run: () => this.watchPortfolios(),
+    });
 
     if (this.options.autoStart) this.start();
   }
@@ -273,6 +280,29 @@ export class Scheduler {
     return (
       `evaluated ${String(results.length)} live configurations: ${String(created)} ` +
       `recommendations created (each awaiting a person), ${String(unjudged)} symbols not judgeable`
+    );
+  }
+
+  /**
+   * Notices things about each portfolio and says so once.
+   *
+   * The findings are the same ones the dashboard shows — not a second
+   * implementation with its own thresholds — and the watcher only speaks on
+   * the transitions: a finding appearing, and a finding clearing.
+   */
+  private async watchPortfolios(): Promise<string> {
+    const outcomes = await this.container.watcher.runAll();
+    const appeared = outcomes.reduce((sum, o) => sum + o.appeared.length, 0);
+    const cleared = outcomes.reduce((sum, o) => sum + o.cleared.length, 0);
+    const failed = outcomes.filter((o) => o.error !== null).length;
+
+    // Says what it did even when it did nothing, because "watched 4, nothing
+    // new" and "could not read any of them" must not look the same in the job
+    // log.
+    return (
+      `watched ${String(outcomes.length)} portfolios: ${String(appeared)} new, ` +
+      `${String(cleared)} cleared` +
+      (failed > 0 ? `, ${String(failed)} could not be read` : '')
     );
   }
 

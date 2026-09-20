@@ -24,6 +24,7 @@ import { useEnvironmentFilter } from '@/hooks/useEnvironmentFilter';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PortfolioComposition } from '@/components/PortfolioComposition';
+import { WatchPanel } from '@/components/WatchPanel';
 import { PositionsTable } from '@/components/PositionsTable';
 import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
@@ -277,6 +278,12 @@ export function DashboardPage() {
             </div>
 
             <div className="space-y-4 lg:sticky lg:top-16">
+              {/*
+                The other half of watch-and-tell. The findings panel answers
+                "what is true now" and needs somebody to open it; this answers
+                "what changed since you last looked" and does not.
+              */}
+              <WatchPanel />
               <KillSwitch portfolio={single} />
               <RiskMonitor portfolioId={single.id} />
               <SystemHealthPanel />
