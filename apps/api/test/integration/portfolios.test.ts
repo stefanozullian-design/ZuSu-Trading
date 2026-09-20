@@ -320,6 +320,85 @@ describe('portfolio summary arithmetic', () => {
     // Naively this would read as +$5,000 of profit; it is exactly zero.
     expect(Number(response.json().dailyPnl)).toBeCloseTo(0, 2);
   });
+
+  it('excludes withdrawals too, and does not count them twice', async () => {
+    const portfolio = await createPortfolio(db, { name: 'Drawn', initialCapital: '10000' });
+    const managerUser = await db.user.findUniqueOrThrow({ where: { email: 'pm@test.local' } });
+    await grantPortfolioAccess(db, managerUser.id, portfolio.id, false);
+
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    await db.portfolioSnapshot.create({
+      data: {
+        portfolioId: portfolio.id,
+        asOf: yesterday,
+        cashBalance: '10000',
+        positionsValue: '0',
+        equity: '10000',
+      },
+    });
+
+    // $4,000 out today, no trading. Withdrawals are stored already negative.
+    await db.cashFlow.create({
+      data: {
+        portfolioId: portfolio.id,
+        type: 'WITHDRAWAL',
+        amount: '-4000',
+        occurredAt: new Date(),
+      },
+    });
+    await db.portfolio.update({ where: { id: portfolio.id }, data: { cashBalance: '6000' } });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/portfolios/${portfolio.id}`,
+      headers: { cookie: session.cookies },
+    });
+
+    // The sum used to negate everything that was not a deposit, which flipped
+    // an already-negative amount back to positive and reported the day as an
+    // $8,000 loss: the withdrawal counted once in the equity drop and again in
+    // the adjustment meant to remove it.
+    expect(Number(response.json().dailyPnl)).toBeCloseTo(0, 2);
+  });
+
+  it('counts a dividend as the day’s profit, because the holdings produced it', async () => {
+    const portfolio = await createPortfolio(db, { name: 'Paying', initialCapital: '10000' });
+    const managerUser = await db.user.findUniqueOrThrow({ where: { email: 'pm@test.local' } });
+    await grantPortfolioAccess(db, managerUser.id, portfolio.id, false);
+
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    await db.portfolioSnapshot.create({
+      data: {
+        portfolioId: portfolio.id,
+        asOf: yesterday,
+        cashBalance: '10000',
+        positionsValue: '0',
+        equity: '10000',
+      },
+    });
+
+    await db.cashFlow.create({
+      data: {
+        portfolioId: portfolio.id,
+        type: 'DIVIDEND',
+        amount: '250',
+        occurredAt: new Date(),
+      },
+    });
+    await db.portfolio.update({ where: { id: portfolio.id }, data: { cashBalance: '10250' } });
+
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/portfolios/${portfolio.id}`,
+      headers: { cookie: session.cookies },
+    });
+
+    // A dividend is the one cash flow that is not somebody's wire. Removing it
+    // here would report the day it landed as flat.
+    expect(Number(response.json().dailyPnl)).toBeCloseTo(250, 2);
+  });
 });
 
 describe('system endpoints', () => {

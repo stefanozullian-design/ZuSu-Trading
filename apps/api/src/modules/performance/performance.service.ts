@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { CashFlowType, PrismaClient } from '@prisma/client';
 import { Decimal, Permission, dec } from '@zusu/shared';
 import { AppError } from '../../lib/errors.js';
 import type { AuditService } from '../audit/audit.service.js';
@@ -64,8 +64,19 @@ export interface PerformanceReport {
 /** Below this, an annualised internal rate of return is meaningless. */
 const MIN_DAYS_FOR_IRR = 7;
 
+/**
+ * The cash-flow types that are somebody's money moving in or out.
+ *
+ * Both return measures subtract these, so that a return is what the trading
+ * produced rather than what was paid in. `DIVIDEND` is deliberately absent:
+ * the portfolio earned it by holding what it holds, and removing it would
+ * report a dividend as if it had never been received.
+ */
+const EXTERNAL_FLOW_TYPES: CashFlowType[] = ['DEPOSIT', 'WITHDRAWAL', 'TRANSFER_IN'];
+
 const NOTES = [
   'A deposit or withdrawal is never counted as profit: both return measures remove external cash flows.',
+  'A dividend is counted as profit, because holding the shares is what produced it. It is the one cash flow neither return measure removes.',
   'Time-weighted return chains the return of each period between snapshots, and treats a cash flow as arriving at the start of its period — capital the trading had to work with.',
   'Money-weighted return is an internal rate of return over the dated flows, annualised, and answers a different question from the time-weighted one. It is withheld for windows shorter than a week, where annualising produces a number in the thousands of percent.',
   'A period is only as fine-grained as its snapshots: without a daily snapshot, a day of movement inside one period is invisible to the chain.',
@@ -111,7 +122,13 @@ export class PerformanceService {
 
     const [flows, realized, fees, closedRealized] = await Promise.all([
       this.db.cashFlow.aggregate({
-        where: { portfolioId, occurredAt: { gte: dayStart, lte: asOf } },
+        // External flows only. A dividend also lands in this table, and it is
+        // income: counting it here would subtract it from the return it is.
+        where: {
+          portfolioId,
+          occurredAt: { gte: dayStart, lte: asOf },
+          type: { in: EXTERNAL_FLOW_TYPES },
+        },
         _sum: { amount: true },
       }),
       this.db.position.aggregate({
@@ -137,7 +154,7 @@ export class PerformanceService {
       cashBalance: cash.toString(),
       positionsValue: positionsValue.toString(),
       equity: cash.plus(positionsValue).toString(),
-      netCashFlow: dec(flows._sum.amount?.toString() ?? '0').toString(),
+      netCashFlow: dec(flows._sum?.amount?.toString() ?? '0').toString(),
       realizedPnl: realizedTotal.toString(),
       unrealizedPnl: unrealizedPnl.toString(),
       feesTotal: dec(fees._sum.amount?.toString() ?? '0').toString(),
@@ -251,8 +268,15 @@ export class PerformanceService {
       orderBy: { asOf: 'asc' },
     });
 
+    // Only what crossed the boundary. Both return measures subtract these so
+    // that nobody's record improves by paying money in; a dividend is the
+    // portfolio earning, so it stays in the return and out of this list.
     const flows = await this.db.cashFlow.findMany({
-      where: { portfolioId, occurredAt: { gte: from, lte: window.to } },
+      where: {
+        portfolioId,
+        occurredAt: { gte: from, lte: window.to },
+        type: { in: EXTERNAL_FLOW_TYPES },
+      },
       orderBy: { occurredAt: 'asc' },
     });
 

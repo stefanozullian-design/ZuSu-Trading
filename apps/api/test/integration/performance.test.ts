@@ -132,6 +132,37 @@ describe('a deposit is not a profit', () => {
   });
 });
 
+describe('a dividend is a profit', () => {
+  it('counts a dividend as return, unlike every other cash flow', async () => {
+    await container.performance.writeSnapshot(portfolioId, new Date(START));
+
+    // Recorded through the trade ledger, which is the only thing that writes a
+    // DIVIDEND flow: the portfolio earned this by holding what it holds.
+    await db.cashFlow.create({
+      data: {
+        portfolioId,
+        type: 'DIVIDEND',
+        amount: '500',
+        occurredAt: new Date(START + DAY),
+      },
+    });
+    await setCash('10500');
+    await container.performance.writeSnapshot(portfolioId, new Date(START + DAY));
+
+    const report = await container.performance.report(manager, portfolioId, {
+      from: new Date(START),
+      to: new Date(START + DAY),
+    });
+
+    // Both measures remove external flows so nobody's record improves by
+    // paying money in. Removing a dividend too would report the day the
+    // dividend landed as flat, which is the opposite of what happened.
+    expect(report.netDeposits).toBe('0');
+    expect(report.investmentGain).toBe('500');
+    expect(Number(report.timeWeightedReturnPct)).toBeCloseTo(5, 6);
+  });
+});
+
 describe('time-weighted return', () => {
   it('chains period returns and ignores when the money arrived', async () => {
     // Day 0: 10,000. Day 1: trading takes it to 11,000 (+10%). Day 2: a

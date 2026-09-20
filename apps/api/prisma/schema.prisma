@@ -232,6 +232,18 @@ enum CashFlowType {
   /// Shares transferred in, not cash. Recorded so returns are not flattered by
   /// an opening balance; never created by hand, only by a position import.
   TRANSFER_IN
+  /// Cash the holdings produced. Unlike every other type here this is *income*:
+  /// it belongs to the return rather than being subtracted from it.
+  DIVIDEND
+}
+
+/// What kind of thing a person typed into the book.
+enum RecordedTradeType {
+  BUY
+  SELL
+  DIVIDEND
+  DEPOSIT
+  WITHDRAWAL
 }
 
 /// How a position came to exist (§44).
@@ -317,6 +329,7 @@ model User {
   backtests        Backtest[]
   riskLimitChanges RiskLimit[]
   scanDefinitions  ScanDefinition[]
+  recordedTrades   RecordedTrade[]
 
   @@index([role])
   @@index([clientId])
@@ -449,6 +462,7 @@ model Portfolio {
   journalEntries   TradeJournalEntry[]
   watchlists       Watchlist[]
   reports          Report[]
+  recordedTrades   RecordedTrade[]
 
   /// Unique per owner, not per installation: two people may each have a
   /// "Retirement". The migration declares NULLS NOT DISTINCT so that unowned
@@ -993,6 +1007,7 @@ model Position {
   portfolio      Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   lots           PositionLot[]
   journalEntries TradeJournalEntry[]
+  recordedTrades RecordedTrade[]
 
   // A partial unique index (one OPEN position per symbol) is added in the
   // `enforce_invariants` migration — Prisma cannot express partial indexes.
@@ -1182,10 +1197,50 @@ model CashFlow {
   occurredAt  DateTime     @map("occurred_at")
   createdAt   DateTime     @default(now()) @map("created_at")
 
-  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio      Portfolio       @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  recordedTrades RecordedTrade[]
 
   @@index([portfolioId, occurredAt])
   @@map("cash_flows")
+}
+
+/// The ledger of entries made by hand (§44).
+///
+/// Positions, lots and cash flows record the *effect* of an entry; none of
+/// them records the entry. Once a later trade has moved through a position,
+/// nothing can answer "what did I enter on the 14th, and at what price" — so
+/// the entries themselves are kept here, and every read of the history reads
+/// this table rather than reconstructing one.
+///
+/// Corrections are new rows in the other direction, never edits: a history
+/// that can be rewritten is one nobody can reconcile against a statement.
+model RecordedTrade {
+  id           String            @id @default(uuid()) @db.Uuid
+  portfolioId  String            @map("portfolio_id") @db.Uuid
+  type         RecordedTradeType
+  symbol       String?
+  quantity     Decimal?          @db.Decimal(24, 8)
+  price        Decimal?          @db.Decimal(24, 8)
+  fees         Decimal           @default(0) @db.Decimal(24, 8)
+  /// Signed, so a sum is the net movement and no reader has to remember which
+  /// types take money out.
+  cashDelta    Decimal           @map("cash_delta") @db.Decimal(24, 8)
+  realizedPnl  Decimal?          @map("realized_pnl") @db.Decimal(24, 8)
+  positionId   String?           @map("position_id") @db.Uuid
+  cashFlowId   String?           @map("cash_flow_id") @db.Uuid
+  occurredAt   DateTime          @map("occurred_at")
+  note         String?
+  recordedById String?           @map("recorded_by_user_id") @db.Uuid
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  portfolio  Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  cashFlow   CashFlow? @relation(fields: [cashFlowId], references: [id], onDelete: SetNull)
+  recordedBy User?     @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([portfolioId, occurredAt(sort: Desc)])
+  @@index([portfolioId, symbol])
+  @@map("recorded_trades")
 }
 
 // ---------------------------------------------------------------------------

@@ -580,16 +580,34 @@ export class PortfolioService {
     };
   }
 
+  /**
+   * Money that crossed the portfolio's boundary since a moment — and only
+   * that.
+   *
+   * Today's P&L is today's change in equity *minus* this, so what belongs here
+   * decides whether a number is performance or somebody's wire:
+   *
+   *   - **Deposits, withdrawals and transfers in belong.** They move equity
+   *     without anyone having earned or lost anything.
+   *   - **A dividend does not.** It raised equity because of what was held,
+   *     which is exactly what P&L is supposed to report. Subtracting it would
+   *     show a dividend day as flat.
+   *
+   * Amounts are stored already signed — a withdrawal is negative in the column
+   * — so this sums them. It used to negate everything that was not a deposit,
+   * which turned a withdrawal into a contribution and reported the day as
+   * twice the loss it was.
+   */
   private async netCashFlowSince(portfolioId: string, since: Date): Promise<Decimal> {
     const flows = await this.db.cashFlow.findMany({
-      where: { portfolioId, occurredAt: { gte: since } },
-      select: { type: true, amount: true },
+      where: {
+        portfolioId,
+        occurredAt: { gte: since },
+        type: { in: ['DEPOSIT', 'WITHDRAWAL', 'TRANSFER_IN'] },
+      },
+      select: { amount: true },
     });
-    return flows.reduce(
-      (sum, f) =>
-        f.type === 'DEPOSIT' ? sum.plus(f.amount.toString()) : sum.minus(f.amount.toString()),
-      dec(0),
-    );
+    return flows.reduce((sum, f) => sum.plus(f.amount.toString()), dec(0));
   }
 }
 

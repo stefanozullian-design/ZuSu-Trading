@@ -259,6 +259,75 @@ export const positionSchema = z.object({
 export type PositionDto = z.infer<typeof positionSchema>;
 
 // ---------------------------------------------------------------------------
+// Recorded trades
+// ---------------------------------------------------------------------------
+
+/**
+ * A trade that happened at a real brokerage and is being typed in afterwards.
+ *
+ * The shape is deliberately one object rather than five endpoints: what a
+ * person is doing is "record what I did", and which fields apply follows from
+ * the type. The server rejects the combinations that contradict themselves —
+ * a deposit with a share count, a buy with no price — rather than accepting
+ * them and guessing.
+ */
+export const recordedTradeTypeSchema = z.enum(['BUY', 'SELL', 'DIVIDEND', 'DEPOSIT', 'WITHDRAWAL']);
+export type RecordedTradeTypeDto = z.infer<typeof recordedTradeTypeSchema>;
+
+export const recordTradeSchema = z.object({
+  type: recordedTradeTypeSchema,
+  /** Buys and sells always; a dividend optionally, naming what paid it. */
+  symbol: z.string().trim().min(1).max(12).optional(),
+  /** Shares. Positive — the type carries the direction. */
+  quantity: decimalString.optional(),
+  /** Price per share actually paid or received. */
+  price: decimalString.optional(),
+  /** Cash, for a dividend, deposit or withdrawal. Positive. */
+  amount: decimalString.optional(),
+  fees: decimalString.optional(),
+  /** When it happened at the broker, not when it was typed in. */
+  occurredAt: z.string().datetime(),
+  note: z.string().max(500).optional(),
+});
+export type RecordTradeInputDto = z.infer<typeof recordTradeSchema>;
+
+export const recordedTradeSchema = z.object({
+  id: z.string(),
+  portfolioId: z.string().uuid(),
+  type: recordedTradeTypeSchema,
+  symbol: z.string().nullable(),
+  quantity: decimalString.nullable(),
+  price: decimalString.nullable(),
+  /** Signed. Negative means the recorded cash balance went down. */
+  cashDelta: decimalString,
+  cashBalanceAfter: decimalString,
+  realizedPnl: decimalString.nullable(),
+  positionId: z.string().uuid().nullable(),
+  cashFlowId: z.string().uuid().nullable(),
+  occurredAt: z.string().datetime(),
+  detail: z.string(),
+  /** Worth knowing, and never a reason the entry was refused. */
+  warnings: z.array(z.string()),
+});
+export type RecordedTradeDto = z.infer<typeof recordedTradeSchema>;
+
+/** One line of the recorded history: a share trade or a cash movement. */
+export const tradeHistoryEntrySchema = z.object({
+  id: z.string(),
+  type: recordedTradeTypeSchema,
+  symbol: z.string().nullable(),
+  quantity: decimalString.nullable(),
+  price: decimalString.nullable(),
+  cashDelta: decimalString.nullable(),
+  realizedPnl: decimalString.nullable(),
+  occurredAt: z.string().datetime(),
+  note: z.string().nullable(),
+  /** False when a fill created it rather than a person typing it in. */
+  recordedByHand: z.boolean(),
+});
+export type TradeHistoryEntryDto = z.infer<typeof tradeHistoryEntrySchema>;
+
+// ---------------------------------------------------------------------------
 // Kill switch
 // ---------------------------------------------------------------------------
 

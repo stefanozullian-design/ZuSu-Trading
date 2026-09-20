@@ -6,7 +6,10 @@ import {
   createPortfolioSchema,
   portfolioSummarySchema,
   positionSchema,
+  recordTradeSchema,
+  recordedTradeSchema,
   switchEnvironmentSchema,
+  tradeHistoryEntrySchema,
   updatePortfolioSchema,
 } from '@zusu/shared';
 import type { AppContainer } from '../../container.js';
@@ -230,6 +233,71 @@ export async function registerPortfolioRoutes(
       });
       return reply.status(201).send(imported);
     },
+  );
+
+  typed.post(
+    '/:id/trades',
+    {
+      preHandler: app.requirePermission(Permission.PORTFOLIO_WRITE),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'Record a trade or cash movement that happened elsewhere',
+        description:
+          'These portfolios are held at a real brokerage. This records what was done there: a ' +
+          'buy, a sell, a dividend, a deposit or a withdrawal. Buys and sells go through the ' +
+          'same first-in-first-out tax-lot engine a routed fill uses, so a realised gain is ' +
+          'computed one way only. No order and no execution is created, because nothing here ' +
+          'routed it — the tax lot carries no fill id rather than pointing at an invented one. ' +
+          'Recorded cash is allowed to go negative, and says so: the real cash is at the ' +
+          'broker, and a deposit entered late is ordinary rather than a fault. Selling more ' +
+          'than the book shows is refused rather than turned into a short position.',
+        params: idParams,
+        body: recordTradeSchema,
+        response: { 201: recordedTradeSchema },
+      },
+    },
+    async (request, reply) => {
+      const { type, occurredAt, symbol, quantity, price, amount, fees, note } = request.body;
+      const recorded = await container.tradeRecords.record(principalOf(request), {
+        portfolioId: request.params.id,
+        type,
+        occurredAt: new Date(occurredAt),
+        ...(symbol !== undefined && { symbol }),
+        ...(quantity !== undefined && { quantity }),
+        ...(price !== undefined && { price }),
+        ...(amount !== undefined && { amount }),
+        ...(fees !== undefined && { fees }),
+        ...(note !== undefined && { note }),
+      });
+      return reply.status(201).send(recorded);
+    },
+  );
+
+  typed.get(
+    '/:id/trades',
+    {
+      preHandler: app.requirePermission(Permission.POSITION_READ),
+      schema: {
+        tags: ['portfolios'],
+        summary: 'What has been recorded for a portfolio, newest first',
+        description:
+          'Read from the ledger of entries rather than reconstructed from positions and lots. ' +
+          'A reconstruction could only show the entries a later trade has not already absorbed.',
+        params: idParams,
+        querystring: z.object({
+          symbol: z.string().trim().min(1).max(12).optional(),
+          limit: z.coerce.number().int().min(1).max(500).default(100),
+        }),
+        response: { 200: z.array(tradeHistoryEntrySchema) },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await container.tradeRecords.history(principalOf(request), request.params.id, {
+          ...(request.query.symbol !== undefined && { symbol: request.query.symbol }),
+          limit: request.query.limit,
+        }),
+      ),
   );
 
   typed.get(

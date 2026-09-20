@@ -763,3 +763,37 @@ export interface ReadinessReport {
     detail: string;
   }[];
 }
+
+export type RecordedTradeType = 'BUY' | 'SELL' | 'DIVIDEND' | 'DEPOSIT' | 'WITHDRAWAL';
+
+export interface RecordedTrade {
+  id: string;
+  portfolioId: string;
+  type: RecordedTradeType;
+  symbol: string | null;
+  quantity: string | null;
+  price: string | null;
+  /** Signed. Negative means the recorded cash balance went down. */
+  cashDelta: string;
+  cashBalanceAfter: string;
+  realizedPnl: string | null;
+  positionId: string | null;
+  cashFlowId: string | null;
+  occurredAt: string;
+  detail: string;
+  /** Worth knowing, and never a reason the entry was refused. */
+  warnings: string[];
+}
+
+export interface TradeHistoryEntry {
+  id: string;
+  type: RecordedTradeType;
+  symbol: string | null;
+  quantity: string | null;
+  price: string | null;
+  cashDelta: string | null;
+  realizedPnl: string | null;
+  occurredAt: string;
+  note: string | null;
+  recordedByHand: boolean;
+}

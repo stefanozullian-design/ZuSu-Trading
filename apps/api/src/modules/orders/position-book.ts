@@ -37,7 +37,14 @@ export interface FillInput {
   price: Decimal;
   fees: Decimal;
   executedAt: Date;
-  executionId: string;
+  /**
+   * The fill this lot came from, when one exists. A trade recorded by hand —
+   * done at a real brokerage and typed in afterwards — has no execution to
+   * point at, and inventing a synthetic order so the column could be filled
+   * would put a fiction in the order book to satisfy a foreign key. The lot
+   * carries null instead, which is the true answer to "which fill was this".
+   */
+  executionId?: string | null;
   assetClass?: string;
   /** Recorded on the position when it opens, for the exit plumbing to read. */
   stopPrice?: Decimal | null;
@@ -94,7 +101,7 @@ export async function applyFill(
     const lot = await tx.positionLot.create({
       data: {
         positionId: existing.id,
-        executionId: input.executionId,
+        executionId: input.executionId ?? null,
         quantity: input.quantity.toString(),
         remainingQty: input.quantity.toString(),
         costBasis: input.price.times(input.quantity).toString(),
@@ -204,7 +211,7 @@ async function openPosition(
   await tx.positionLot.create({
     data: {
       positionId: position.id,
-      executionId: input.executionId,
+      executionId: input.executionId ?? null,
       quantity: input.quantity.toString(),
       remainingQty: input.quantity.toString(),
       costBasis: input.price.times(input.quantity).toString(),

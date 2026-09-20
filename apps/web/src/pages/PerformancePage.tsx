@@ -78,11 +78,16 @@ export function PerformancePage() {
     onError: (err: Error) => setError(explainApiError(err)),
   });
 
+  // Deliberately the trade-recording endpoint rather than the older
+  // /performance/cash-flows one. Both write the same cash-flow row, but only
+  // this one also writes the ledger entry the recorded history reads — a
+  // deposit made here and missing from the history on the dashboard would look
+  // like the deposit had been lost.
   const cashFlow = useMutation({
     mutationFn: () =>
-      api<unknown>('/api/performance/cash-flows', {
+      api<unknown>(`/api/portfolios/${id}/trades`, {
         method: 'POST',
-        body: { portfolioId: id, type: flowType, amount },
+        body: { type: flowType, amount, occurredAt: new Date().toISOString() },
       }),
     onSuccess: () => {
       setAmount('');
@@ -255,7 +260,8 @@ export function PerformancePage() {
               Record
             </Button>
             <p className="text-[11px] text-muted-foreground">
-              Kept as its own row and removed from both return measures.
+              Kept as its own row and removed from both return measures. A dividend is recorded on
+              the dashboard instead, because it is income rather than a contribution.
             </p>
           </CardContent>
         </Card>

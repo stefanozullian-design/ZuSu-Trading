@@ -24,6 +24,8 @@ import { useEnvironmentFilter } from '@/hooks/useEnvironmentFilter';
 import { KillSwitch } from '@/components/KillSwitch';
 import { PortfolioStats } from '@/components/PortfolioStats';
 import { PositionsTable } from '@/components/PositionsTable';
+import { RecordTrade } from '@/components/RecordTrade';
+import { TradeHistory } from '@/components/TradeHistory';
 import { RiskMonitor } from '@/components/RiskMonitor';
 import { SystemHealthPanel } from '@/components/SystemHealthPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -271,6 +273,14 @@ export function DashboardPage() {
           <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
             <div className="space-y-4 lg:col-span-2">
               <PositionsTable portfolioId={single.id} />
+              {/*
+                Directly under the holdings, because recording is what a person
+                came here to do after acting at their broker: the panel that
+                shows what the book thinks is held sits next to the one that
+                corrects it.
+              */}
+              <RecordTrade portfolioId={single.id} />
+              <TradeHistory portfolioId={single.id} />
               <ApprovalsPanel portfolioId={single.id} />
             </div>
 

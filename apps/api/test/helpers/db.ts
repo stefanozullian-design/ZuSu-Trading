@@ -10,6 +10,7 @@ export function testDb(): PrismaClient {
 /** Tables cleared between tests, ordered so foreign keys never block a delete. */
 const TABLES = [
   'audit_logs',
+  'recorded_trades',
   'signal_events',
   'order_events',
   'executions',

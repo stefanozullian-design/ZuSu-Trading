@@ -252,6 +252,13 @@ export const AuditAction = {
   STRATEGY_DISABLED: 'STRATEGY_DISABLED',
   /** A holding declared as already owned, rather than opened by a fill. */
   POSITION_IMPORTED: 'POSITION_IMPORTED',
+  /**
+   * A buy, sell, dividend, deposit or withdrawal that happened at a real
+   * brokerage and was typed in afterwards. Its own action, because "who
+   * recorded this" and "what routed this" are different questions and only the
+   * first one has an answer for these.
+   */
+  TRADE_RECORDED: 'TRADE_RECORDED',
   STRATEGY_PROMOTED: 'STRATEGY_PROMOTED',
   /** Automation lowered. Its own action, so "who turned it down" is searchable. */
   STRATEGY_DEMOTED: 'STRATEGY_DEMOTED',
