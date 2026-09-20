@@ -96,6 +96,49 @@ interface AggregatesResponse {
   next_url?: string;
 }
 
+/** What one response disclosed about the plan's rate limit. */
+export interface RateLimitReading {
+  limit: number | null;
+  remaining: number | null;
+  /** Providers disagree on whether this is a delay or an epoch. Kept raw. */
+  resetRaw: string | null;
+  retryAfterRaw: string | null;
+  /** The rate-limit headers this response actually carried. */
+  headers: string[];
+}
+
+const RATE_HEADERS = [
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'x-ratelimit-reset',
+  'ratelimit-limit',
+  'ratelimit-remaining',
+  'ratelimit-reset',
+  'retry-after',
+] as const;
+
+/** Reads whichever rate-limit headers are present, and records which were. */
+export function readRateLimit(headers: Headers): RateLimitReading {
+  const seen = RATE_HEADERS.filter((name) => headers.get(name) !== null);
+  const num = (...names: string[]): number | null => {
+    for (const name of names) {
+      const raw = headers.get(name);
+      if (raw === null) continue;
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+  };
+
+  return {
+    limit: num('x-ratelimit-limit', 'ratelimit-limit'),
+    remaining: num('x-ratelimit-remaining', 'ratelimit-remaining'),
+    resetRaw: headers.get('x-ratelimit-reset') ?? headers.get('ratelimit-reset'),
+    retryAfterRaw: headers.get('retry-after'),
+    headers: [...seen],
+  };
+}
+
 export class MassiveProvider implements MarketDataProvider {
   readonly kind: MarketDataProviderKind = 'MASSIVE';
   readonly name = 'massive';
@@ -106,6 +149,7 @@ export class MassiveProvider implements MarketDataProvider {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private rateLimitRemaining: number | null = null;
+  private lastReading: RateLimitReading | null = null;
 
   constructor(options: MassiveProviderOptions) {
     if (!options.apiKey) {
@@ -388,6 +432,19 @@ export class MassiveProvider implements MarketDataProvider {
     return days;
   }
 
+  /**
+   * What the last response said about the rate limit.
+   *
+   * Returned as a reading rather than a number, because "no headers at all"
+   * and "zero remaining" are different answers and a single nullable number
+   * cannot tell them apart. `headers` names what the response actually
+   * carried, so a caller can say "this provider does not report a limit"
+   * instead of quietly presenting silence as headroom.
+   */
+  lastRateLimit(): RateLimitReading | null {
+    return this.lastReading;
+  }
+
   async healthCheck(): Promise<ProviderHealth> {
     const started = Date.now();
     try {
@@ -440,11 +497,8 @@ export class MassiveProvider implements MarketDataProvider {
       clearTimeout(timer);
     }
 
-    const remaining = response.headers.get('x-ratelimit-remaining');
-    if (remaining !== null) {
-      const parsed = Number(remaining);
-      this.rateLimitRemaining = Number.isFinite(parsed) ? parsed : null;
-    }
+    this.lastReading = readRateLimit(response.headers);
+    if (this.lastReading.remaining !== null) this.rateLimitRemaining = this.lastReading.remaining;
 
     if (response.status === 429) {
       throw new MarketDataError('Massive rate limit exceeded', true, 429);

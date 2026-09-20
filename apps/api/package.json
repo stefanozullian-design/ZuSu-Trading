@@ -21,7 +21,8 @@
     "test:unit": "vitest run src/",
     "test:integration": "vitest run test/integration/",
     "test:watch": "vitest",
-    "docs:openapi": "tsx scripts/generate-openapi.ts"
+    "docs:openapi": "tsx scripts/generate-openapi.ts",
+    "check:provider": "tsx scripts/check-provider.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
